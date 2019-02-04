@@ -291,7 +291,7 @@ private:
 	TEXTURE_INFO PrepareTexture(const TEX0&);
 	GLuint PreparePalette(const TEX0&);
 
-	float GetZ(float);
+	float GetZ(uint32) const;
 
 	void VertexKick(uint8, uint64);
 
@@ -362,7 +362,7 @@ private:
 	float m_nPrimOfsY;
 	uint32 m_nTexWidth;
 	uint32 m_nTexHeight;
-	float m_nMaxZ;
+	uint32 m_maxZ;
 
 	bool m_forceBilinearTextures = false;
 	unsigned int m_fbScale = 1;

@@ -266,9 +266,9 @@ public:
 		{
 			return static_cast<float>(nY) / 16.0f;
 		}
-		float GetZ()
+		uint32 GetZ()
 		{
-			return static_cast<float>(nZ);
+			return nZ;
 		}
 	};
 	static_assert(sizeof(XYZ) == sizeof(uint64), "Size of XYZ struct must be 8 bytes.");
