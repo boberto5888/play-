@@ -6,7 +6,6 @@ environment:
   - BUILD_TYPE: Visual Studio 15 2017 Win64
     BUILD_PLAY: ON
     INSTALLER_SCRIPT: installer64.nsi
-    QT_FLAVOR: msvc2017_64
 
 build_script:
 - cmd: >-
