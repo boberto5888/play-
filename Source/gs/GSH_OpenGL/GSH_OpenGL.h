@@ -110,7 +110,6 @@ private:
 		GLint texture0MagFilter;
 		GLint texture0WrapS;
 		GLint texture0WrapT;
-		bool texture0AlphaAsIndex;
 		GLuint texture1Handle;
 		GLsizei viewportWidth;
 		GLsizei viewportHeight;
@@ -254,7 +253,6 @@ private:
 		float offsetX = 0;
 		float scaleRatioX = 1;
 		float scaleRatioY = 1;
-		bool alphaAsIndex = false;
 	};
 
 	struct TEXTUREFORMAT_INFO
