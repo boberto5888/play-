@@ -81,7 +81,6 @@ CGSH_OpenGL::TEXTURE_INFO CGSH_OpenGL::PrepareTexture(const TEX0& tex0)
 	{
 		bool canBeUsed = false;
 		float offsetX = 0;
-		bool alphaAsIndex = false;
 
 		//Case: TEX0 points at the start of a frame buffer with the same width
 		if(candidateFramebuffer->m_basePtr == tex0.GetBufPtr() &&
@@ -89,17 +88,6 @@ CGSH_OpenGL::TEXTURE_INFO CGSH_OpenGL::PrepareTexture(const TEX0& tex0)
 		   IsCompatibleFramebufferPSM(candidateFramebuffer->m_psm, tex0.nPsm))
 		{
 			canBeUsed = true;
-		}
-
-		//Case: TEX0 point at the start of a frame buffer with the same width
-		//but uses upper 8-bits (alpha) as an indexed texture (used in Yakuza)
-		else if(candidateFramebuffer->m_basePtr == tex0.GetBufPtr() &&
-		        candidateFramebuffer->m_width == tex0.GetBufWidth() &&
-		        candidateFramebuffer->m_psm == CGSHandler::PSMCT32 &&
-		        tex0.nPsm == CGSHandler::PSMT8H)
-		{
-			canBeUsed = true;
-			alphaAsIndex = true;
 		}
 
 		//Another case: TEX0 is pointing to the start of a page within our framebuffer (BGDA does this)
@@ -138,7 +126,6 @@ CGSH_OpenGL::TEXTURE_INFO CGSH_OpenGL::PrepareTexture(const TEX0& tex0)
 			texInfo.offsetX = offsetX;
 			texInfo.scaleRatioX = scaleRatioX;
 			texInfo.scaleRatioY = scaleRatioY;
-			texInfo.alphaAsIndex = alphaAsIndex;
 
 			return texInfo;
 		}
