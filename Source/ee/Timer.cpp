@@ -34,13 +34,13 @@ void CTimer::Count(unsigned int ticks)
 		switch(timer.nMODE & MODE_CLOCK_SELECT)
 		{
 		case MODE_CLOCK_SELECT_BUSCLOCK:
-			divider = 1 * 2;
+			divider = 1;
 			break;
 		case MODE_CLOCK_SELECT_BUSCLOCK16:
-			divider = 16 * 2;
+			divider = 16;
 			break;
 		case MODE_CLOCK_SELECT_BUSCLOCK256:
-			divider = 256 * 2;
+			divider = 256;
 			break;
 		case MODE_CLOCK_SELECT_EXTERNAL:
 			divider = 9437; // PAL
