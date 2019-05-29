@@ -68,6 +68,7 @@
 #define BIOS_ADDRESS_INTCHANDLER_BASE 0x0000A000
 #define BIOS_ADDRESS_DMACHANDLER_BASE 0x0000C000
 #define BIOS_ADDRESS_SEMAPHORE_BASE 0x0000E000
+#define BIOS_ADDRESS_CUSTOMSYSCALL_BASE 0x00010000
 #define BIOS_ADDRESS_ALARM_BASE 0x00010800
 #define BIOS_ADDRESS_THREAD_BASE 0x00011000
 
@@ -248,6 +249,7 @@ CPS2OS::CPS2OS(CMIPS& ee, uint8* ram, uint8* bios, uint8* spr, CGSHandler*& gs, 
     , m_intcHandlerQueue(m_intcHandlers, reinterpret_cast<uint32*>(m_ram + BIOS_ADDRESS_INTCHANDLERQUEUE_BASE))
     , m_dmacHandlerQueue(m_dmacHandlers, reinterpret_cast<uint32*>(m_ram + BIOS_ADDRESS_DMACHANDLERQUEUE_BASE))
 {
+	static_assert((BIOS_ADDRESS_SEMAPHORE_BASE + (sizeof(SEMAPHORE) * MAX_SEMAPHORE)) <= BIOS_ADDRESS_CUSTOMSYSCALL_BASE, "Semaphore overflow");
 }
 
 CPS2OS::~CPS2OS()
@@ -1042,7 +1044,7 @@ void CPS2OS::AssembleAlarmHandler()
 
 uint32* CPS2OS::GetCustomSyscallTable()
 {
-	return (uint32*)&m_ram[0x00010000];
+	return (uint32*)&m_ram[BIOS_ADDRESS_CUSTOMSYSCALL_BASE];
 }
 
 void CPS2OS::LinkThread(uint32 threadId)
@@ -2448,6 +2450,7 @@ void CPS2OS::sc_CreateSema()
 	auto sema = m_semaphores[id];
 	sema->count = semaParam->initCount;
 	sema->maxCount = semaParam->maxCount;
+	sema->option = semaParam->option;
 	sema->waitCount = 0;
 
 	assert(sema->count <= sema->maxCount);
@@ -2595,6 +2598,7 @@ void CPS2OS::sc_ReferSemaStatus()
 	semaParam->count = sema->count;
 	semaParam->maxCount = sema->maxCount;
 	semaParam->waitThreads = sema->waitCount;
+	semaParam->option = sema->option;
 
 	m_ee.m_State.nGPR[SC_RETURN].nD0 = id;
 }
