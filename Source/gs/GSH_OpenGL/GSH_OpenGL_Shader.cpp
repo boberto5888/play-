@@ -69,7 +69,12 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateShader(const SHADERCAPS& caps
 	glBindAttribLocation(*result, static_cast<GLuint>(PRIM_VERTEX_ATTRIB::TEXCOORD), "a_texCoord");
 	glBindAttribLocation(*result, static_cast<GLuint>(PRIM_VERTEX_ATTRIB::FOG), "a_fog");
 
-	bool linkResult = result->Link();
+#ifndef GLES_COMPATIBILITY
+	glBindFragDataLocationIndexed(*result, 0, 0, "fragColor");
+	glBindFragDataLocationIndexed(*result, 0, 1, "blendColor");
+#endif
+
+	FRAMEWORK_MAYBE_UNUSED bool linkResult = result->Link();
 	assert(linkResult);
 
 	CHECKGLERROR();
@@ -118,7 +123,7 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateVertexShader(const SHADERCAPS& c
 
 	Framework::OpenGl::CShader result(GL_VERTEX_SHADER);
 	result.SetSource(shaderSource.c_str(), shaderSource.size());
-	bool compilationResult = result.Compile();
+	FRAMEWORK_MAYBE_UNUSED bool compilationResult = result.Compile();
 	assert(compilationResult);
 
 	CHECKGLERROR();
@@ -143,6 +148,9 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 	}
 
 	shaderBuilder << "out vec4 fragColor;" << std::endl;
+#ifndef GLES_COMPATIBILITY
+	shaderBuilder << "out vec4 blendColor;" << std::endl;
+#endif
 
 	shaderBuilder << "uniform sampler2D g_texture;" << std::endl;
 	shaderBuilder << "uniform sampler2D g_palette;" << std::endl;
@@ -155,7 +163,7 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 	shaderBuilder << "	vec2 g_clampMax;" << std::endl;
 	shaderBuilder << "	float g_texA0;" << std::endl;
 	shaderBuilder << "	float g_texA1;" << std::endl;
-	shaderBuilder << "	float g_alphaRef;" << std::endl;
+	shaderBuilder << "	uint g_alphaRef;" << std::endl;
 	shaderBuilder << "	vec3 g_fogColor;" << std::endl;
 	shaderBuilder << "};" << std::endl;
 
@@ -164,6 +172,14 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 		shaderBuilder << s_andFunction << std::endl;
 		shaderBuilder << s_orFunction << std::endl;
 	}
+
+	shaderBuilder << "float combineColors(float a, float b)" << std::endl;
+	shaderBuilder << "{" << std::endl;
+	shaderBuilder << "	uint aInt = uint(a * 255.0);" << std::endl;
+	shaderBuilder << "	uint bInt = uint(b * 255.0);" << std::endl;
+	shaderBuilder << "	uint result = min((aInt * bInt) >> 7, 255u);" << std::endl;
+	shaderBuilder << "	return float(result) / 255.0;" << std::endl;
+	shaderBuilder << "}" << std::endl;
 
 	shaderBuilder << "vec4 expandAlpha(vec4 inputColor)" << std::endl;
 	shaderBuilder << "{" << std::endl;
@@ -238,7 +254,7 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 				shaderBuilder << "	vec4 br = expandAlpha(texture(g_palette, vec2(brIdx / 256.0 + paletteTexelBias, 0)));" << std::endl;
 			}
 
-			shaderBuilder << "	vec2 f = fract(texCoord.st * g_textureSize);" << std::endl;
+			shaderBuilder << "	highp vec2 f = fract(texCoord.st * g_textureSize);" << std::endl;
 			shaderBuilder << "	vec4 tA = mix(tl, tr, f.x);" << std::endl;
 			shaderBuilder << "	vec4 tB = mix(bl, br, f.x);" << std::endl;
 			shaderBuilder << "	textureColor = mix(tA, tB, f.y);" << std::endl;
@@ -266,7 +282,7 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 			}
 			else
 			{
-				shaderBuilder << "	textureColor.a = (textureColor.a * v_color.a) / (128.0 / 255.0);" << std::endl;
+				shaderBuilder << "	textureColor.a = combineColors(textureColor.a, v_color.a);" << std::endl;
 			}
 			break;
 		case TEX0_FUNCTION_DECAL:
@@ -314,16 +330,22 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 	}
 
 	//For proper alpha blending, alpha has to be multiplied by 2 (0x80 -> 1.0)
+#ifdef GLES_COMPATIBILITY
 	//This has the side effect of not writing a proper value in the framebuffer (should write alpha "as is")
 	shaderBuilder << "	fragColor.a = clamp(textureColor.a * 2.0, 0.0, 1.0);" << std::endl;
+#else
+	shaderBuilder << "	fragColor.a = textureColor.a;" << std::endl;
+	shaderBuilder << "	blendColor.a = clamp(textureColor.a * 2.0, 0.0, 1.0);" << std::endl;
 	shaderBuilder << "	gl_FragDepth = v_depth;" << std::endl;
+#endif
+
 	shaderBuilder << "}" << std::endl;
 
 	auto shaderSource = shaderBuilder.str();
 
 	Framework::OpenGl::CShader result(GL_FRAGMENT_SHADER);
 	result.SetSource(shaderSource.c_str(), shaderSource.size());
-	bool compilationResult = result.Compile();
+	FRAMEWORK_MAYBE_UNUSED bool compilationResult = result.Compile();
 	assert(compilationResult);
 
 	CHECKGLERROR();
@@ -371,28 +393,29 @@ std::string CGSH_OpenGL::GenerateAlphaTestSection(ALPHA_TEST_METHOD testMethod)
 		test = "if(false)";
 		break;
 	case ALPHA_TEST_LESS:
-		test = "if(textureColor.a >= g_alphaRef)";
+		test = "if(textureColorAlphaInt >= g_alphaRef)";
 		break;
 	case ALPHA_TEST_LEQUAL:
-		test = "if(textureColor.a > g_alphaRef)";
+		test = "if(textureColorAlphaInt > g_alphaRef)";
 		break;
 	case ALPHA_TEST_EQUAL:
-		test = "if(textureColor.a != g_alphaRef)";
+		test = "if(textureColorAlphaInt != g_alphaRef)";
 		break;
 	case ALPHA_TEST_GEQUAL:
-		test = "if(textureColor.a < g_alphaRef)";
+		test = "if(textureColorAlphaInt < g_alphaRef)";
 		break;
 	case ALPHA_TEST_GREATER:
-		test = "if(textureColor.a <= g_alphaRef)";
+		test = "if(textureColorAlphaInt <= g_alphaRef)";
 		break;
 	case ALPHA_TEST_NOTEQUAL:
-		test = "if(textureColor.a == g_alphaRef)";
+		test = "if(textureColorAlphaInt == g_alphaRef)";
 		break;
 	default:
 		assert(false);
 		break;
 	}
 
+	shaderBuilder << "uint textureColorAlphaInt = uint(textureColor.a * 255.0);" << std::endl;
 	shaderBuilder << test << std::endl;
 	shaderBuilder << "{" << std::endl;
 	shaderBuilder << "	discard;" << std::endl;
@@ -421,7 +444,7 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GeneratePresentProgram()
 		shaderBuilder << "}" << std::endl;
 
 		vertexShader.SetSource(shaderBuilder.str().c_str());
-		bool result = vertexShader.Compile();
+		FRAMEWORK_MAYBE_UNUSED bool result = vertexShader.Compile();
 		assert(result);
 	}
 
@@ -438,7 +461,7 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GeneratePresentProgram()
 		shaderBuilder << "}" << std::endl;
 
 		pixelShader.SetSource(shaderBuilder.str().c_str());
-		bool result = pixelShader.Compile();
+		FRAMEWORK_MAYBE_UNUSED bool result = pixelShader.Compile();
 		assert(result);
 	}
 
@@ -451,7 +474,7 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GeneratePresentProgram()
 		glBindAttribLocation(*program, static_cast<GLuint>(PRIM_VERTEX_ATTRIB::POSITION), "a_position");
 		glBindAttribLocation(*program, static_cast<GLuint>(PRIM_VERTEX_ATTRIB::TEXCOORD), "a_texCoord");
 
-		bool result = program->Link();
+		FRAMEWORK_MAYBE_UNUSED bool result = program->Link();
 		assert(result);
 	}
 
@@ -478,7 +501,7 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateCopyToFbProgram()
 		shaderBuilder << "}" << std::endl;
 
 		vertexShader.SetSource(shaderBuilder.str().c_str());
-		bool result = vertexShader.Compile();
+		FRAMEWORK_MAYBE_UNUSED bool result = vertexShader.Compile();
 		assert(result);
 	}
 
@@ -495,7 +518,7 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateCopyToFbProgram()
 		shaderBuilder << "}" << std::endl;
 
 		pixelShader.SetSource(shaderBuilder.str().c_str());
-		bool result = pixelShader.Compile();
+		FRAMEWORK_MAYBE_UNUSED bool result = pixelShader.Compile();
 		assert(result);
 	}
 
@@ -508,7 +531,7 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateCopyToFbProgram()
 		glBindAttribLocation(*program, static_cast<GLuint>(PRIM_VERTEX_ATTRIB::POSITION), "a_position");
 		glBindAttribLocation(*program, static_cast<GLuint>(PRIM_VERTEX_ATTRIB::TEXCOORD), "a_texCoord");
 
-		bool result = program->Link();
+		FRAMEWORK_MAYBE_UNUSED bool result = program->Link();
 		assert(result);
 	}
 

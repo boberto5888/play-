@@ -4,12 +4,11 @@
 #include <QMainWindow>
 #include <QLabel>
 #include <QKeyEvent>
-#include <QXmlStreamReader>
 #include <QDir>
+#include <QAbstractNativeEventFilter>
 
 #include "AppConfig.h"
 #include "PS2VM.h"
-#include "PS2VM_Preferences.h"
 #include "StatsManager.h"
 #include "ElidedLabel.h"
 #include "ContinuationChecker.h"
@@ -21,7 +20,21 @@ namespace Ui
 	class MainWindow;
 }
 
+#ifdef DEBUGGER_INCLUDED
+class CDebugger;
+class CFrameDebugger;
+
+namespace Ui
+{
+	class DebugMenu;
+}
+#endif
+
 class MainWindow : public QMainWindow
+#ifdef DEBUGGER_INCLUDED
+    ,
+                   public QAbstractNativeEventFilter
+#endif
 {
 	Q_OBJECT
 
@@ -32,21 +45,49 @@ public:
 	void BootElf(boost::filesystem::path);
 	void BootCDROM();
 	void LoadCDROM(boost::filesystem::path filePath);
+#ifdef DEBUGGER_INCLUDED
+	void ShowDebugger();
+	void ShowFrameDebugger();
+	boost::filesystem::path GetFrameDumpDirectoryPath();
+	void DumpNextFrame();
+	void ToggleGsDraw();
+#endif
 
 private:
+	enum BootType
+	{
+		CD,
+		ELF
+	};
+
+	struct LastOpenCommand
+	{
+		LastOpenCommand() = default;
+		LastOpenCommand(BootType type, boost::filesystem::path path)
+		    : type(type)
+		    , path(path)
+		{
+		}
+		BootType type = BootType::CD;
+		boost::filesystem::path path;
+	};
+
 	void SetOpenGlPanelSize();
 	void CreateStatusBar();
 	void InitVirtualMachine();
 	void SetupGsHandler();
 	void SetupSoundHandler();
 	void SetupSaveLoadStateSlots();
-	QString SaveStateInfo(int);
-	void OnExecutableChange();
+	QString GetSaveStateInfo(int);
+	void EmitOnExecutableChange();
 	void UpdateUI();
 	void RegisterPreferences();
 	void saveState(int);
 	void loadState(int);
 	void toggleFullscreen();
+#ifdef DEBUGGER_INCLUDED
+	bool nativeEventFilter(const QByteArray&, void*, long*) Q_DECL_OVERRIDE;
+#endif
 
 	Ui::MainWindow* ui;
 
@@ -60,28 +101,21 @@ private:
 	bool m_deactivatePause = false;
 	bool m_pauseFocusLost = true;
 	std::shared_ptr<CInputProviderQtKey> m_qtKeyInputProvider;
-	enum BootType
-	{
-		CD,
-		ELF
-	};
-	struct LastOpenCommand
-	{
-		LastOpenCommand() = default;
-		LastOpenCommand(BootType type, boost::filesystem::path path)
-		    : type(type)
-		    , path(path)
-		{
-		}
-		BootType type = BootType::CD;
-		boost::filesystem::path path;
-	};
 	LastOpenCommand m_lastOpenCommand;
 	boost::filesystem::path m_lastPath;
+
+#ifdef DEBUGGER_INCLUDED
+	std::unique_ptr<CDebugger> m_debugger;
+	std::unique_ptr<CFrameDebugger> m_frameDebugger;
+	Ui::DebugMenu* debugMenuUi = nullptr;
+#endif
 
 protected:
 	void closeEvent(QCloseEvent*) Q_DECL_OVERRIDE;
 	void showEvent(QShowEvent*) Q_DECL_OVERRIDE;
+
+signals:
+	void onExecutableChange();
 
 public slots:
 	void openGLWindow_resized();
@@ -107,6 +141,8 @@ private slots:
 	void on_actionController_Manager_triggered();
 	void on_actionCapture_Screen_triggered();
 	void doubleClickEvent(QMouseEvent*);
+	void HandleOnExecutableChange();
+	void on_actionList_Bootables_triggered();
 };
 
 #endif // MAINWINDOW_H

@@ -26,13 +26,15 @@ if(NOT TARGET gsh_opengl)
 endif()
 list(INSERT PROJECT_LIBS 0 gsh_opengl)
 
-if (NOT TARGET glew_s)
-add_subdirectory(
-	${CMAKE_CURRENT_SOURCE_DIR}/../../../Dependencies/glew-2.0.0
-	${CMAKE_CURRENT_BINARY_DIR}/glew-2.0.0
-)
+if(NOT TARGET_PLATFORM_UNIX_AARCH64)
+	if (NOT TARGET glew_s)
+		add_subdirectory(
+			${CMAKE_CURRENT_SOURCE_DIR}/../../../Dependencies/glew-2.0.0
+			${CMAKE_CURRENT_BINARY_DIR}/glew-2.0.0
+		)
+	endif()
+	list(APPEND PROJECT_LIBS glew_s)
 endif()
-list(APPEND PROJECT_LIBS glew_s)
 
 if(TARGET_PLATFORM_UNIX)
 	find_package(LIBEVDEV REQUIRED)
@@ -51,12 +53,16 @@ if(TARGET_PLATFORM_MACOS OR TARGET_PLATFORM_UNIX)
 endif()
 
 set(QT_SOURCES
+	bootablelistdialog.cpp
+	BootableModel.cpp
 	ControllerConfig/bindingmodel.cpp
 	ControllerConfig/bindingmodel.h
 	ControllerConfig/controllerconfigdialog.cpp
 	ControllerConfig/controllerconfigdialog.h
 	ControllerConfig/inputeventselectiondialog.cpp
 	ControllerConfig/inputeventselectiondialog.h
+	CoverUtils.cpp
+	CoverUtils.h
 	main.cpp
 	mainwindow.cpp
 	mainwindow.h
@@ -104,13 +110,49 @@ if(LIBEVDEV_FOUND)
 	)
 endif()
 if(TARGET_PLATFORM_WIN32)
+	if(NOT TARGET Framework_Win32)
+		add_subdirectory(
+			${CMAKE_CURRENT_SOURCE_DIR}/../../../Framework/build_cmake/FrameworkWin32
+			${CMAKE_CURRENT_BINARY_DIR}/Framework_Win32
+		)
+	endif()
+	list(APPEND PROJECT_LIBS Framework_Win32)
+	
 	set(QT_SOURCES
 		${QT_SOURCES}
 		../../tools/PsfPlayer/Source/win32_ui/SH_WaveOut.cpp
 	)
 	list(APPEND PROJECT_LIBS winmm)
+	
+	if(TARGET_PLATFORM_WIN32_X86)
+		set(MANIFEST ../ui_win32/Play-x86.manifest)
+	else()
+		set(MANIFEST ../ui_win32/Play-x64.manifest)
+	endif()
+
+	set(QT_SOURCES
+		${QT_SOURCES}
+		../ui_win32/Res.rc
+		../ui_win32/ElfViewRes.rc
+		${MANIFEST}
+	)
+	
+	list(APPEND PROJECT_LIBS dinput8)
+	
+	if(DEBUGGER_INCLUDED)
+		if(NOT TARGET PlayDebugSupport)
+			add_subdirectory(
+				${CMAKE_CURRENT_SOURCE_DIR}/win32/DebugSupport
+				${CMAKE_CURRENT_BINARY_DIR}/PlayDebugSupport
+			)
+		endif()
+		list(APPEND PROJECT_LIBS PlayDebugSupport)
+	endif()
+	
 endif()
 set(QT_MOC_HEADERS
+	bootablelistdialog.h
+	BootableModel.h
 	ControllerConfig/bindingmodel.h
 	ControllerConfig/controllerconfigdialog.h
 	ControllerConfig/inputeventselectiondialog.h
@@ -127,7 +169,9 @@ set(QT_MOC_HEADERS
 )
 
 set(QT_UIS
+	Qt_ui/bootablelistdialog.ui
 	Qt_ui/controllerconfigdialog.ui
+	Qt_ui/debugmenu.ui
 	Qt_ui/inputeventselectiondialog.ui
 	Qt_ui/mainwindow.ui
 	Qt_ui/memorycardmanager.ui
@@ -173,14 +217,26 @@ if(TARGET_PLATFORM_MACOS)
 			MACOSX_BUNDLE_BUNDLE_NAME ${PROJECT_NAME}
 			MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_Version}"
 			MACOSX_BUNDLE_BUNDLE_VERSION ${DATE}
-			MACOSX_BUNDLE_COPYRIGHT "© Virtual Applications, 2017"
+			MACOSX_BUNDLE_COPYRIGHT "© Virtual Applications, 2019"
 			MACOSX_BUNDLE_ICON_FILE "AppIcon.icns"
 			MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/macos/Info.plist.in"
 		RESOURCE "${OSX_RES}"
 	)
 	list(APPEND PROJECT_LIBS "-framework IOKit -framework CoreFoundation")
 elseif(TARGET_PLATFORM_WIN32)
+	set(QT_SOURCES
+		${QT_SOURCES}
+		win32/InputProviderDirectInput.cpp
+		win32/InputProviderDirectInput.h
+	)
 	add_executable(Play WIN32 ${QT_SOURCES} ${QT_MOC_SRCS} ${QT_RES_SOURCES} ${QT_UI_HEADERS})
+elseif(TARGET_PLATFORM_UNIX)
+	add_executable(Play ${QT_SOURCES} ${QT_MOC_SRCS} ${QT_RES_SOURCES} ${QT_UI_HEADERS})
+
+	install(TARGETS Play DESTINATION bin RENAME Play PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_READ WORLD_EXECUTE WORLD_READ)
+
+	install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/../../installer_unix/Play.desktop DESTINATION share/applications)
+	install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/../../icons/icon_base.png DESTINATION share/icons RENAME Play.png)
 else()
 	add_executable(Play ${QT_SOURCES} ${QT_MOC_SRCS} ${QT_RES_SOURCES} ${QT_UI_HEADERS})
 endif()

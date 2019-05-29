@@ -68,7 +68,7 @@ private:
 		uint32 initCount;
 		uint32 waitThreads;
 		uint32 attributes;
-		uint32 options;
+		uint32 option;
 	};
 
 	struct THREADPARAM
@@ -98,6 +98,7 @@ private:
 		uint32 count;
 		uint32 maxCount;
 		uint32 waitCount;
+		uint32 option;
 	};
 
 	struct THREAD
@@ -261,6 +262,8 @@ private:
 	void UnlinkThread(uint32);
 	void ThreadShakeAndBake();
 	void ThreadSwitchContext(uint32);
+	void ThreadSaveContext(THREAD*, bool);
+	void ThreadLoadContext(THREAD*, bool);
 	void ThreadReset(uint32);
 	void CheckLivingThreads();
 
@@ -346,6 +349,8 @@ private:
 
 	OsVariableWrapper<uint32> m_currentThreadId;
 	OsVariableWrapper<uint32> m_idleThreadId;
+	OsVariableWrapper<uint32> m_tlblExceptionHandler;
+	OsVariableWrapper<uint32> m_tlbsExceptionHandler;
 	OsVariableWrapper<uint32> m_sifDmaNextIdx;
 
 	uint32* m_sifDmaTimes = nullptr;

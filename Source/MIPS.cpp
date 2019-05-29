@@ -3,17 +3,20 @@
 #include "MIPS.h"
 #include "COP_SCU.h"
 
+// clang-format off
 const char* CMIPS::m_sGPRName[] =
-    {
-        "R0", "AT", "V0", "V1", "A0", "A1", "A2", "A3",
-        "T0", "T1", "T2", "T3", "T4", "T5", "T6", "T7",
-        "S0", "S1", "S2", "S3", "S4", "S5", "S6", "S7",
-        "T8", "T9", "K0", "K1", "GP", "SP", "FP", "RA"};
+{
+    "R0", "AT", "V0", "V1", "A0", "A1", "A2", "A3",
+    "T0", "T1", "T2", "T3", "T4", "T5", "T6", "T7",
+    "S0", "S1", "S2", "S3", "S4", "S5", "S6", "S7",
+    "T8", "T9", "K0", "K1", "GP", "SP", "FP", "RA"
+};
+// clang-format on
 
-CMIPS::CMIPS(MEMORYMAP_ENDIANESS nEnd)
+CMIPS::CMIPS(MEMORYMAP_ENDIANESS endianess, bool usePageTable)
 {
 	m_analysis = new CMIPSAnalysis(this);
-	switch(nEnd)
+	switch(endianess)
 	{
 	case MEMORYMAP_ENDIAN_LSBF:
 		m_pMemoryMap = new CMemoryMap_LSBF;
@@ -21,6 +24,16 @@ CMIPS::CMIPS(MEMORYMAP_ENDIANESS nEnd)
 	case MEMORYMAP_ENDIAN_MSBF:
 		//
 		break;
+	}
+
+	if(usePageTable)
+	{
+		const uint32 pageCount = 0x100000000ULL / MIPS_PAGE_SIZE;
+		m_pageLookup = new void*[pageCount];
+		for(uint32 i = 0; i < pageCount; i++)
+		{
+			m_pageLookup[i] = nullptr;
+		}
 	}
 
 	m_pCOP[0] = nullptr;
@@ -35,6 +48,7 @@ CMIPS::~CMIPS()
 {
 	delete m_pMemoryMap;
 	delete m_analysis;
+	delete[] m_pageLookup;
 }
 
 void CMIPS::Reset()
@@ -124,4 +138,16 @@ bool CMIPS::GenerateException(uint32 nAddress)
 	m_State.nCOP0[CCOP_SCU::STATUS] |= STATUS_EXL;
 
 	return true;
+}
+
+void CMIPS::MapPages(uint32 vAddress, uint32 size, uint8* memory)
+{
+	assert(m_pageLookup);
+	assert((vAddress % MIPS_PAGE_SIZE) == 0);
+	assert((size % MIPS_PAGE_SIZE) == 0);
+	uint32 pageBase = vAddress / MIPS_PAGE_SIZE;
+	for(uint32 pageIndex = 0; pageIndex < (size / MIPS_PAGE_SIZE); pageIndex++)
+	{
+		m_pageLookup[pageBase + pageIndex] = memory + (MIPS_PAGE_SIZE * pageIndex);
+	}
 }

@@ -1,13 +1,23 @@
 #include "../AppConfig.h"
 #include "Iop_Ioman.h"
 #include "StdStream.h"
+#include "../states/XmlStateFile.h"
+#include "xml/Utils.h"
 #include "../Log.h"
 #include <stdexcept>
 #include <cctype>
+#include "std_experimental_map.h"
 
 using namespace Iop;
 
 #define LOG_NAME "iop_ioman"
+
+#define STATE_FILES_FILENAME ("iop_ioman/files.xml")
+#define STATE_FILES_FILESNODE "Files"
+#define STATE_FILES_FILENODE "File"
+#define STATE_FILES_FILENODE_IDATTRIBUTE ("Id")
+#define STATE_FILES_FILENODE_PATHATTRIBUTE ("Path")
+#define STATE_FILES_FILENODE_FLAGSATTRIBUTE ("Flags")
 
 #define PREF_IOP_FILEIO_STDLOGGING ("iop.fileio.stdlogging")
 
@@ -65,8 +75,8 @@ CIoman::CIoman(uint8* ram)
 			auto stdoutPath = CAppConfig::GetBasePath() / "ps2_stdout.txt";
 			auto stderrPath = CAppConfig::GetBasePath() / "ps2_stderr.txt";
 
-			m_files[FID_STDOUT] = new Framework::CStdStream(fopen(stdoutPath.string().c_str(), "ab"));
-			m_files[FID_STDERR] = new Framework::CStdStream(fopen(stderrPath.string().c_str(), "ab"));
+			m_files[FID_STDOUT] = FileInfo{new Framework::CStdStream(fopen(stdoutPath.string().c_str(), "ab"))};
+			m_files[FID_STDERR] = FileInfo{new Framework::CStdStream(fopen(stderrPath.string().c_str(), "ab"))};
 		}
 		catch(...)
 		{
@@ -77,11 +87,7 @@ CIoman::CIoman(uint8* ram)
 
 CIoman::~CIoman()
 {
-	for(auto fileIterator(std::begin(m_files));
-	    std::end(m_files) != fileIterator; fileIterator++)
-	{
-		delete fileIterator->second;
-	}
+	m_files.clear();
 	m_devices.clear();
 }
 
@@ -140,25 +146,34 @@ uint32 CIoman::Open(uint32 flags, const char* path)
 	uint32 handle = 0xFFFFFFFF;
 	try
 	{
-		auto pathInfo = SplitPath(path);
-		auto deviceIterator = m_devices.find(pathInfo.deviceName);
-		if(deviceIterator == m_devices.end())
-		{
-			throw std::runtime_error("Device not found.");
-		}
-		auto stream = deviceIterator->second->GetFile(flags, pathInfo.devicePath.c_str());
-		if(!stream)
-		{
-			throw std::runtime_error("File not found.");
-		}
+		auto stream = OpenInternal(flags, path);
 		handle = m_nextFileHandle++;
-		m_files[handle] = stream;
+		FileInfo fileInfo(stream);
+		fileInfo.flags = flags;
+		fileInfo.path = path;
+		m_files[handle] = std::move(fileInfo);
 	}
 	catch(const std::exception& except)
 	{
 		CLog::GetInstance().Warn(LOG_NAME, "%s: Error occured while trying to open file : %s\r\n", __FUNCTION__, except.what());
 	}
 	return handle;
+}
+
+Framework::CStream* CIoman::OpenInternal(uint32 flags, const char* path)
+{
+	auto pathInfo = SplitPath(path);
+	auto deviceIterator = m_devices.find(pathInfo.deviceName);
+	if(deviceIterator == m_devices.end())
+	{
+		throw std::runtime_error("Device not found.");
+	}
+	auto stream = deviceIterator->second->GetFile(flags, pathInfo.devicePath.c_str());
+	if(!stream)
+	{
+		throw std::runtime_error("File not found.");
+	}
+	return stream;
 }
 
 uint32 CIoman::Close(uint32 handle)
@@ -173,7 +188,6 @@ uint32 CIoman::Close(uint32 handle)
 		{
 			throw std::runtime_error("Invalid file handle.");
 		}
-		delete file->second;
 		m_files.erase(file);
 		//Returns handle instead of 0 (needed by Naruto: Ultimate Ninja 2)
 		result = handle;
@@ -400,20 +414,14 @@ Framework::CStream* CIoman::GetFileStream(uint32 handle)
 	{
 		throw std::runtime_error("Invalid file handle.");
 	}
-	return file->second;
+	return file->second.stream;
 }
 
 void CIoman::SetFileStream(uint32 handle, Framework::CStream* stream)
 {
-	{
-		auto prevStreamIterator = m_files.find(handle);
-		if(prevStreamIterator != std::end(m_files))
-		{
-			delete prevStreamIterator->second;
-			m_files.erase(prevStreamIterator);
-		}
-	}
-	m_files[handle] = stream;
+	auto prevStreamIterator = m_files.find(handle);
+	m_files.erase(prevStreamIterator);
+	m_files[handle] = {stream};
 }
 
 //IOP Invoke
@@ -459,6 +467,59 @@ void CIoman::Invoke(CMIPS& context, unsigned int functionId)
 		CLog::GetInstance().Warn(LOG_NAME, "%s(%08X): Unknown function (%d) called.\r\n", __FUNCTION__, context.m_State.nPC, functionId);
 		break;
 	}
+}
+
+void CIoman::SaveState(Framework::CZipArchiveWriter& archive)
+{
+	auto fileStateFile = new CXmlStateFile(STATE_FILES_FILENAME, STATE_FILES_FILESNODE);
+	auto filesStateNode = fileStateFile->GetRoot();
+
+	for(const auto& filePair : m_files)
+	{
+		if(filePair.first == FID_STDOUT) continue;
+		if(filePair.first == FID_STDERR) continue;
+
+		const auto& file = filePair.second;
+
+		auto fileStateNode = new Framework::Xml::CNode(STATE_FILES_FILENODE, true);
+		fileStateNode->InsertAttribute(Framework::Xml::CreateAttributeIntValue(STATE_FILES_FILENODE_IDATTRIBUTE, filePair.first));
+		fileStateNode->InsertAttribute(Framework::Xml::CreateAttributeIntValue(STATE_FILES_FILENODE_FLAGSATTRIBUTE, file.flags));
+		fileStateNode->InsertAttribute(Framework::Xml::CreateAttributeStringValue(STATE_FILES_FILENODE_PATHATTRIBUTE, file.path.c_str()));
+		filesStateNode->InsertNode(fileStateNode);
+	}
+
+	archive.InsertFile(fileStateFile);
+}
+
+void CIoman::LoadState(Framework::CZipArchiveReader& archive)
+{
+	std::experimental::erase_if(m_files,
+	                            [](const FileMapType::value_type& filePair) {
+		                            return (filePair.first != FID_STDOUT) && (filePair.first != FID_STDERR);
+	                            });
+
+	auto fileStateFile = CXmlStateFile(*archive.BeginReadFile(STATE_FILES_FILENAME));
+	auto fileStateNode = fileStateFile.GetRoot();
+
+	int32 maxFileId = 0;
+	auto fileNodes = fileStateNode->SelectNodes(STATE_FILES_FILESNODE "/" STATE_FILES_FILENODE);
+	for(auto fileNode : fileNodes)
+	{
+		int32 id = 0, flags = 0;
+		std::string path;
+		if(!Framework::Xml::GetAttributeIntValue(fileNode, STATE_FILES_FILENODE_IDATTRIBUTE, &id)) break;
+		if(!Framework::Xml::GetAttributeStringValue(fileNode, STATE_FILES_FILENODE_PATHATTRIBUTE, &path)) break;
+		if(!Framework::Xml::GetAttributeIntValue(fileNode, STATE_FILES_FILENODE_FLAGSATTRIBUTE, &flags)) break;
+
+		auto stream = OpenInternal(flags, path.c_str());
+		FileInfo fileInfo(stream);
+		fileInfo.flags = flags;
+		fileInfo.path = path;
+		m_files[id] = std::move(fileInfo);
+
+		maxFileId = std::max(maxFileId, id);
+	}
+	m_nextFileHandle = maxFileId + 1;
 }
 
 //--------------------------------------------------

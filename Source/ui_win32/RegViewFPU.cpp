@@ -4,16 +4,10 @@
 
 #define MENUCMD_BASE 40000
 
-CRegViewFPU::CRegViewFPU(HWND hParent, const RECT& rect, CVirtualMachine& virtualMachine, CMIPS* pC)
+CRegViewFPU::CRegViewFPU(HWND hParent, const RECT& rect, CMIPS* pC)
     : CRegViewPage(hParent, rect)
     , m_pCtx(pC)
     , m_nViewMode(VIEWMODE_SINGLE)
-{
-	virtualMachine.OnMachineStateChange.connect(boost::bind(&CRegViewFPU::OnMachineStateChange, this));
-	virtualMachine.OnRunningStateChange.connect(boost::bind(&CRegViewFPU::OnRunningStateChange, this));
-}
-
-CRegViewFPU::~CRegViewFPU()
 {
 }
 

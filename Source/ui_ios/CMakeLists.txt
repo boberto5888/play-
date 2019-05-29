@@ -58,11 +58,12 @@ set(OSX_SOURCES
 	AppDelegate.mm
 	BackgroundLayer.m
 	CoverViewCell.m
-	CoverViewController.m
+	CoverViewController.mm
 	EmulatorViewController.mm
 	GlEsView.mm
 	GSH_OpenGLiOS.cpp
 	main.mm
+	ResolutionFactorSelectorViewController.mm
 	SettingsViewController.mm
 	VirtualPadButton.mm
 	VirtualPadItem.mm
@@ -78,6 +79,7 @@ set(OSX_HEADERS
 	EmulatorViewController.h
 	GlEsView.h
 	GSH_OpenGLiOS.h
+	ResolutionFactorSelectorViewController.h
 	SettingsViewController.h
 	VirtualPadButton.h
 	VirtualPadItem.h
@@ -86,7 +88,6 @@ set(OSX_HEADERS
 )
 
 set(OSX_RES
-	${CMAKE_CURRENT_SOURCE_DIR}/../../games.db
 	${CMAKE_CURRENT_SOURCE_DIR}/../../patches.xml
 	${CMAKE_CURRENT_SOURCE_DIR}/Base.lproj/Main.storyboard
 	${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon@2x.png

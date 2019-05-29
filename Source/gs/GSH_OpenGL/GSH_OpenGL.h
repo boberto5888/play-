@@ -10,7 +10,7 @@
 #include "opengl/Shader.h"
 #include "opengl/Resource.h"
 
-#define PREF_CGSH_OPENGL_ENABLEHIGHRESMODE "renderer.opengl.enablehighresmode"
+#define PREF_CGSH_OPENGL_RESOLUTION_FACTOR "renderer.opengl.resfactor"
 #define PREF_CGSH_OPENGL_FORCEBILINEARTEXTURES "renderer.opengl.forcebilineartextures"
 
 class CGSH_OpenGL : public CGSHandler
@@ -137,7 +137,7 @@ private:
 		float clampMax[2];
 		float texA0;
 		float texA1;
-		float alphaRef;
+		uint32 alphaRef;
 		float padding1;
 		float fogColor[3];
 		float padding2;

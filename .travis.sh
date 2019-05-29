@@ -4,10 +4,10 @@ travis_before_install()
 {
     cd ..
     if [ "$TARGET_OS" = "Linux" ]; then
-        sudo add-apt-repository --yes ppa:beineri/opt-qt562-trusty
+        sudo add-apt-repository --yes ppa:beineri/opt-qt-5.12.3-xenial
         sudo add-apt-repository --yes ppa:ubuntu-toolchain-r/test
         sudo apt-get update -qq
-        sudo apt-get install -qq qt56base gcc-5 g++-5 libalut-dev libevdev-dev
+        sudo apt-get install -qq qt512base gcc-5 g++-5 libgl1-mesa-dev libglu1-mesa-dev libalut-dev libevdev-dev
         curl -sSL https://cmake.org/files/v3.8/cmake-3.8.1-Linux-x86_64.tar.gz | sudo tar -xzC /opt
     elif [ "$TARGET_OS" = "Linux_Clang_Format" ]; then
         wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
@@ -76,9 +76,18 @@ travis_script()
         if [ "$TARGET_OS" = "Linux" ]; then
             if [ "$CXX" = "g++" ]; then export CXX="g++-5" CC="gcc-5"; fi
             export PATH=/opt/cmake-3.8.1-Linux-x86_64/bin/:$PATH
-            source /opt/qt56/bin/qt56-env.sh || true
-            cmake .. -G"$BUILD_TYPE" -DCMAKE_PREFIX_PATH=/opt/qt56/;
+            source /opt/qt512/bin/qt512-env.sh || true
+            cmake .. -G"$BUILD_TYPE" -DCMAKE_PREFIX_PATH=/opt/qt512/ -DCMAKE_INSTALL_PREFIX=./appdir/usr;
             cmake --build .
+            cmake --build . --target install
+
+            # AppImage Creation
+            wget -c "https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage"
+            chmod a+x linuxdeployqt*.AppImage
+            unset QTDIR; unset QT_PLUGIN_PATH ; unset LD_LIBRARY_PATH
+            export VERSION="${TRAVIS_COMMIT:0:8}"
+            ./linuxdeployqt*.AppImage ./appdir/usr/share/applications/*.desktop -bundle-non-qt-libs -qmake=/opt/qt512/bin/qmake
+            ./linuxdeployqt*.AppImage ./appdir/usr/share/applications/*.desktop -appimage -qmake=/opt/qt512/bin/qmake
         elif [ "$TARGET_OS" = "OSX" ]; then
             export CMAKE_PREFIX_PATH="$(brew --prefix qt5)"
             cmake .. -G"$BUILD_TYPE"
@@ -110,6 +119,9 @@ travis_before_deploy()
     pushd $SHORT_HASH
     if [ -z "$ANDROID_KEYSTORE_PASS" ]; then
         return
+    fi;
+    if [ "$TARGET_OS" = "Linux" ]; then
+        cp ../../build/Play*.AppImage .
     fi;
     if [ "$TARGET_OS" = "Android" ]; then
         cp ../../build_android/build/outputs/apk/release/Play-release-unsigned.apk .

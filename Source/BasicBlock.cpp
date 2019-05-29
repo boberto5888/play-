@@ -132,9 +132,18 @@ void CBasicBlock::Compile()
 	size_t blockSize = ((m_end - m_begin) / 4) + 1;
 	auto blockData = new uint32[blockSize];
 
-	for(uint32 i = 0; i < blockSize; i++)
+	if(!IsEmpty())
 	{
-		blockData[i] = m_context.m_pMemoryMap->GetWord(m_begin + (i * 4));
+		for(uint32 i = 0; i < blockSize; i++)
+		{
+			blockData[i] = m_context.m_pMemoryMap->GetWord(m_begin + (i * 4));
+		}
+	}
+	else
+	{
+		//The empty block has no data per se
+		assert(blockSize == 1);
+		blockData[0] = ~0;
 	}
 
 	uint32 blockChecksum = crc32(0, reinterpret_cast<Bytef*>(blockData), blockSize * 4);
@@ -169,6 +178,7 @@ void CBasicBlock::Compile()
 #endif
 
 #ifdef AOT_BUILD_CACHE
+	if(m_aotBlockOutputStream)
 	{
 		std::lock_guard<std::mutex> lock(m_aotBlockOutputStreamMutex);
 
@@ -252,26 +262,30 @@ void CBasicBlock::CompileEpilog(CMipsJitter* jitter)
 		jitter->PushCst(MIPS_INVALID_PC);
 		jitter->PullRel(offsetof(CMIPS, m_State.nDelayedJumpAddr));
 
+#ifndef AOT_BUILD_CACHE
 		jitter->PushRel(offsetof(CMIPS, m_State.nHasException));
 		jitter->PushCst(0);
 		jitter->BeginIf(Jitter::CONDITION_EQ);
 		{
-			jitter->JumpTo(reinterpret_cast<void*>(&NextBlockTrampoline));
+			jitter->JumpToDynamic(reinterpret_cast<void*>(&NextBlockTrampoline));
 		}
 		jitter->EndIf();
+#endif
 	}
 	jitter->Else();
 	{
 		jitter->PushCst(m_end + 4);
 		jitter->PullRel(offsetof(CMIPS, m_State.nPC));
 
+#ifndef AOT_BUILD_CACHE
 		jitter->PushRel(offsetof(CMIPS, m_State.nHasException));
 		jitter->PushCst(0);
 		jitter->BeginIf(Jitter::CONDITION_EQ);
 		{
-			jitter->JumpTo(reinterpret_cast<void*>(&NextBlockTrampoline));
+			jitter->JumpToDynamic(reinterpret_cast<void*>(&NextBlockTrampoline));
 		}
 		jitter->EndIf();
+#endif
 	}
 	jitter->EndIf();
 }
@@ -332,6 +346,7 @@ void CBasicBlock::SetLinkTargetAddress(LINK_SLOT linkSlot, uint32 address)
 
 void CBasicBlock::LinkBlock(LINK_SLOT linkSlot, CBasicBlock* otherBlock)
 {
+#ifndef AOT_ENABLED
 	assert(!IsEmpty());
 	assert(!otherBlock->IsEmpty());
 	assert(linkSlot < LINK_SLOT_MAX);
@@ -345,10 +360,12 @@ void CBasicBlock::LinkBlock(LINK_SLOT linkSlot, CBasicBlock* otherBlock)
 	m_function.BeginModify();
 	*reinterpret_cast<uintptr_t*>(code + m_linkBlockTrampolineOffset[linkSlot]) = patchValue;
 	m_function.EndModify();
+#endif //!AOT_ENABLED
 }
 
 void CBasicBlock::UnlinkBlock(LINK_SLOT linkSlot)
 {
+#ifndef AOT_ENABLED
 	assert(!IsEmpty());
 	assert(linkSlot < LINK_SLOT_MAX);
 	assert(m_linkBlockTrampolineOffset[linkSlot] != INVALID_LINK_SLOT);
@@ -361,6 +378,7 @@ void CBasicBlock::UnlinkBlock(LINK_SLOT linkSlot)
 	m_function.BeginModify();
 	*reinterpret_cast<uintptr_t*>(code + m_linkBlockTrampolineOffset[linkSlot]) = patchValue;
 	m_function.EndModify();
+#endif //!AOT_ENABLED
 }
 
 void CBasicBlock::HandleExternalFunctionReference(uintptr_t symbol, uint32 offset, Jitter::CCodeGen::SYMBOL_REF_TYPE refType)
@@ -403,11 +421,11 @@ void CBasicBlock::BreakpointHandler(CMIPS* context)
 
 #endif
 
-void CBasicBlock::EmptyBlockHandler(CMIPS* context)
+void EmptyBlockHandler(CMIPS* context)
 {
 	context->m_emptyBlockHandler(context);
 }
 
-void CBasicBlock::NextBlockTrampoline(CMIPS* context)
+void NextBlockTrampoline(CMIPS* context)
 {
 }

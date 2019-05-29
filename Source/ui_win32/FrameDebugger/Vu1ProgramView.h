@@ -10,11 +10,11 @@
 #include "TabHost.h"
 #include "GifPacketView.h"
 
-class CVu1ProgramView : public Framework::Win32::CWindow, public IFrameDebuggerTab
+class CVu1ProgramView : public Framework::Win32::CWindow, public IFrameDebuggerTab, public boost::signals2::trackable
 {
 public:
 	CVu1ProgramView(HWND, const RECT&, CVu1Vm&);
-	virtual ~CVu1ProgramView();
+	virtual ~CVu1ProgramView() = default;
 
 	void UpdateState(CGSHandler*, CGsPacketMetadata*, DRAWINGKICK_INFO*) override;
 
@@ -22,8 +22,15 @@ public:
 
 protected:
 	long OnSize(unsigned int, unsigned int, unsigned int) override;
+	LRESULT OnWndProc(unsigned int, WPARAM, LPARAM) override;
 
 private:
+	void OnMachineStateChange();
+	void OnRunningStateChange();
+
+	void OnMachineStateChangeMsg();
+	void OnRunningStateChangeMsg();
+
 	CVu1Vm& m_virtualMachine;
 	std::unique_ptr<Framework::Win32::CSplitter> m_mainSplitter;
 	std::unique_ptr<Framework::Win32::CSplitter> m_subSplitter;

@@ -26,14 +26,17 @@ public:
 	void SetReverbEnabled(bool);
 	void SetVolumeAdjust(float);
 
+	CMIPS& GetCpu();
+	uint8* GetRam();
 	Iop::CSpuBase& GetSpuCore(unsigned int);
+
 	void SetSubSystem(const PsfVmSubSystemPtr&);
 
 	CDebuggable GetDebugInfo();
 
-	virtual STATUS GetStatus() const;
-	virtual void Pause();
-	virtual void Resume();
+	STATUS GetStatus() const override;
+	void Pause() override;
+	void Resume() override;
 
 #ifdef DEBUGGER_INCLUDED
 	std::string MakeTagPackagePath(const char*);

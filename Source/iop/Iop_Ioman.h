@@ -5,6 +5,8 @@
 #include "Iop_Module.h"
 #include "Ioman_Device.h"
 #include "Stream.h"
+#include "zip/ZipArchiveWriter.h"
+#include "zip/ZipArchiveReader.h"
 
 namespace Iop
 {
@@ -75,6 +77,9 @@ namespace Iop
 		std::string GetFunctionName(unsigned int) const override;
 		void Invoke(CMIPS&, unsigned int) override;
 
+		void SaveState(Framework::CZipArchiveWriter&);
+		void LoadState(Framework::CZipArchiveReader&);
+
 		void RegisterDevice(const char*, const DevicePtr&);
 
 		uint32 Open(uint32, const char*);
@@ -93,9 +98,60 @@ namespace Iop
 		void SetFileStream(uint32, Framework::CStream*);
 
 	private:
-		typedef std::map<uint32, Framework::CStream*> FileMapType;
+		struct FileInfo
+		{
+			FileInfo() = default;
+
+			FileInfo(Framework::CStream* stream)
+			    : stream(stream)
+			{
+			}
+
+			FileInfo(FileInfo&& rhs)
+			{
+				MoveFrom(std::move(rhs));
+			}
+
+			~FileInfo()
+			{
+				Reset();
+			}
+
+			FileInfo& operator=(FileInfo&& rhs)
+			{
+				MoveFrom(std::move(rhs));
+				return (*this);
+			}
+
+			void MoveFrom(FileInfo&& rhs)
+			{
+				Reset();
+				std::swap(stream, rhs.stream);
+				std::swap(path, rhs.path);
+				std::swap(flags, rhs.flags);
+			}
+
+			void Reset()
+			{
+				delete stream;
+				stream = nullptr;
+				flags = 0;
+				path.clear();
+			}
+
+			FileInfo& operator=(const FileInfo&) = delete;
+			FileInfo(const FileInfo&) = delete;
+
+			Framework::CStream* stream = nullptr;
+			std::string path;
+			uint32 flags = 0;
+		};
+
+		typedef std::map<uint32, FileInfo> FileMapType;
 		typedef std::map<uint32, Ioman::Directory> DirectoryMapType;
 		typedef std::map<std::string, DevicePtr> DeviceMapType;
+
+		Framework::CStream* OpenInternal(uint32, const char*);
 
 		FileMapType m_files;
 		DirectoryMapType m_directories;

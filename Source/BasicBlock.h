@@ -40,6 +40,12 @@ namespace Jitter
 	class CJitter;
 };
 
+extern "C"
+{
+	void EmptyBlockHandler(CMIPS*);
+	void NextBlockTrampoline(CMIPS*);
+}
+
 class CBasicBlock
 {
 public:
@@ -54,6 +60,7 @@ public:
 	virtual ~CBasicBlock() = default;
 	void Execute();
 	void Compile();
+	virtual void CompileRange(CMipsJitter*);
 
 	uint32 GetBeginAddress() const;
 	uint32 GetEndAddress() const;
@@ -74,7 +81,6 @@ protected:
 	uint32 m_end;
 	CMIPS& m_context;
 
-	virtual void CompileRange(CMipsJitter*);
 	void CompileProlog(CMipsJitter*);
 	void CompileEpilog(CMipsJitter*);
 
@@ -86,9 +92,6 @@ private:
 	static uint32 BreakpointFilter(CMIPS*);
 	static void BreakpointHandler(CMIPS*);
 #endif
-
-	static void EmptyBlockHandler(CMIPS*);
-	static void NextBlockTrampoline(CMIPS*);
 
 #ifdef AOT_BUILD_CACHE
 	static Framework::CStdStream* m_aotBlockOutputStream;

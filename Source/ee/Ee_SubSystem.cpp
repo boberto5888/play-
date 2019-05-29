@@ -27,13 +27,13 @@ using namespace Ee;
 CSubSystem::CSubSystem(uint8* iopRam, CIopBios& iopBios)
     : m_ram(reinterpret_cast<uint8*>(framework_aligned_alloc(PS2::EE_RAM_SIZE, framework_getpagesize())))
     , m_bios(new uint8[PS2::EE_BIOS_SIZE])
-    , m_spr(new uint8[PS2::EE_SPR_SIZE])
+    , m_spr(reinterpret_cast<uint8*>(framework_aligned_alloc(PS2::EE_SPR_SIZE, 0x10)))
     , m_fakeIopRam(new uint8[FAKE_IOP_RAM_SIZE])
     , m_vuMem0(reinterpret_cast<uint8*>(framework_aligned_alloc(PS2::VUMEM0SIZE, 0x10)))
     , m_microMem0(new uint8[PS2::MICROMEM0SIZE])
     , m_vuMem1(reinterpret_cast<uint8*>(framework_aligned_alloc(PS2::VUMEM1SIZE, 0x10)))
     , m_microMem1(new uint8[PS2::MICROMEM1SIZE])
-    , m_EE(MEMORYMAP_ENDIAN_LSBF)
+    , m_EE(MEMORYMAP_ENDIAN_LSBF, true)
     , m_VU0(MEMORYMAP_ENDIAN_LSBF)
     , m_VU1(MEMORYMAP_ENDIAN_LSBF)
     , m_dmac(m_ram, m_spr, m_vuMem0, m_EE)
@@ -53,6 +53,7 @@ CSubSystem::CSubSystem(uint8* iopRam, CIopBios& iopBios)
 	assert((reinterpret_cast<size_t>(&m_EE.m_State) & 0x0F) == 0);
 	assert((reinterpret_cast<size_t>(&m_VU0.m_State) & 0x0F) == 0);
 	assert((reinterpret_cast<size_t>(&m_VU1.m_State) & 0x0F) == 0);
+	assert((reinterpret_cast<size_t>(m_spr) & 0x0F) == 0);
 	assert((reinterpret_cast<size_t>(m_vuMem0) & 0x0F) == 0);
 	assert((reinterpret_cast<size_t>(m_vuMem1) & 0x0F) == 0);
 
@@ -150,6 +151,8 @@ CSubSystem::CSubSystem(uint8* iopRam, CIopBios& iopBios)
 
 	m_os = new CPS2OS(m_EE, m_ram, m_bios, m_spr, m_gs, m_sif, iopBios);
 	m_os->OnRequestInstructionCacheFlush.connect(boost::bind(&CSubSystem::FlushInstructionCache, this));
+
+	SetupEePageTable();
 }
 
 CSubSystem::~CSubSystem()
@@ -158,7 +161,7 @@ CSubSystem::~CSubSystem()
 	delete m_os;
 	framework_aligned_free(m_ram);
 	delete[] m_bios;
-	delete[] m_spr;
+	framework_aligned_free(m_spr);
 	delete[] m_fakeIopRam;
 	framework_aligned_free(m_vuMem0);
 	delete[] m_microMem0;
@@ -388,6 +391,14 @@ void CSubSystem::LoadState(Framework::CZipArchiveReader& archive)
 	m_vpu1->LoadState(archive);
 	m_timer.LoadState(archive);
 	m_gif.LoadState(archive);
+}
+
+void CSubSystem::SetupEePageTable()
+{
+	m_EE.MapPages(0x00000000, PS2::EE_RAM_SIZE, m_ram);
+	m_EE.MapPages(0x20000000, PS2::EE_RAM_SIZE, m_ram);
+	m_EE.MapPages(0x70000000, PS2::EE_SPR_SIZE, m_spr);
+	m_EE.MapPages(0x80000000, PS2::EE_RAM_SIZE, m_ram);
 }
 
 uint32 CSubSystem::IOPortReadHandler(uint32 nAddress)

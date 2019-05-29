@@ -3,17 +3,17 @@ image: Visual Studio 2017
 environment:
   CONFIG_TYPE: Release
   matrix:
-  - BUILD_TYPE: Visual Studio 15 2017
-    INSTALLER_SCRIPT: installer32.nsi
   - BUILD_TYPE: Visual Studio 15 2017 Win64
+    BUILD_PLAY: ON
     INSTALLER_SCRIPT: installer64.nsi
+    QT_FLAVOR: msvc2017_64
 
 build_script:
 - cmd: >-
     set REPO_COMMIT_SHORT=%APPVEYOR_REPO_COMMIT:~0,8%
-
+    
     appveyor SetVariable -Name REPO_COMMIT_SHORT -Value %REPO_COMMIT_SHORT%
-
+    
     cd ..
     
     rename Play PlaySource
@@ -42,39 +42,8 @@ build_script:
     
     cd Play
     
-    mkdir build
+    call appveyor_build.cmd
     
-    cd build
-    
-    cmake .. -G"%BUILD_TYPE%" -T v141_xp -DBUILD_PSFPLAYER=on
-    
-    cmake --build . --config %CONFIG_TYPE%
-    
-    cd ..
-    
-    "C:\Program Files (x86)\NSIS\makensis.exe" ./installer_win32/%INSTALLER_SCRIPT%
-    
-    "C:\Program Files (x86)\NSIS\makensis.exe" ./tools/PsfPlayer/installer_win32/%INSTALLER_SCRIPT%
-    
-    cd ..
-    
-    cd ..
-    
-    mkdir %REPO_COMMIT_SHORT%
-    
-    move Play-Build\Play\installer_win32\*.exe %REPO_COMMIT_SHORT%
-    
-    move Play-Build\Play\tools\PsfPlayer\installer_win32\*.exe %REPO_COMMIT_SHORT%
-
 artifacts:
 - path: $(REPO_COMMIT_SHORT)\*.exe
   name: Binaries
-deploy:
-- provider: S3
-  access_key_id: AKIAJGVKEDYESR2BIP7Q
-  secret_access_key:
-    secure: JFQy5OF0YXW/H6mcQtfxbd4dAJ+m88p5UwOrazZnfHXecN2M08LklayUlaX/51tI
-  bucket: playbuilds
-  region: us-east-2
-  artifact: Binaries
-  set_public: true

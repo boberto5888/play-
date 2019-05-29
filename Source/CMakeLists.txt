@@ -24,7 +24,11 @@ if(USE_AOT_CACHE)
 	list(APPEND DEFINITIONS_LIST AOT_USE_CACHE=1)
 endif()
 
-if(TARGET_PLATFORM_ANDROID OR TARGET_PLATFORM_IOS)
+if(BUILD_AOT_CACHE)
+	list(APPEND DEFINITIONS_LIST AOT_BUILD_CACHE=1)
+endif()
+
+if(TARGET_PLATFORM_ANDROID OR TARGET_PLATFORM_IOS OR BUILD_AOT_CACHE)
 	list(APPEND DEFINITIONS_LIST DISABLE_LOGGING=1)
 endif()
 
@@ -303,6 +307,8 @@ set(COMMON_SRC_FILES
 	iop/Iop_Thbase.h
 	iop/Iop_Thevent.cpp
 	iop/Iop_Thevent.h
+	iop/Iop_Thfpool.cpp
+	iop/Iop_Thfpool.h
 	iop/Iop_Thmsgbx.cpp
 	iop/Iop_Thmsgbx.h
 	iop/Iop_Thsema.cpp
@@ -378,6 +384,7 @@ set(COMMON_SRC_FILES
 	PH_Generic.h
 	Profiler.cpp
 	Profiler.h
+	Ps2Const.h
 	PS2VM.cpp
 	PS2VM.h
 	PS2VM_Preferences.h
@@ -410,6 +417,8 @@ set(COMMON_SRC_FILES
 	states/StructCollectionStateFile.h
 	states/StructFile.cpp
 	states/StructFile.h
+	states/XmlStateFile.cpp
+	states/XmlStateFile.h
 	ScopedVmPauser.cpp
 	ScopedVmPauser.h
 	ScreenShotUtils.cpp

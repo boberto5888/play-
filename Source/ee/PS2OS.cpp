@@ -59,11 +59,16 @@
 #define BIOS_ADDRESS_THREADSCHEDULE_BASE 0x00000020
 #define BIOS_ADDRESS_INTCHANDLERQUEUE_BASE 0x00000024
 #define BIOS_ADDRESS_DMACHANDLERQUEUE_BASE 0x00000028
-#define BIOS_ADDRESS_SIFDMA_NEXT_INDEX 0x0000002C
-#define BIOS_ADDRESS_SIFDMA_TIMES_BASE 0x00000030
+#define BIOS_ADDRESS_TLB_READEXCEPTION_HANDLER 0x0000002C
+#define BIOS_ADDRESS_TLB_WRITEEXCEPTION_HANDLER 0x00000030
+#define BIOS_ADDRESS_SIFDMA_NEXT_INDEX 0x00000034
+#define BIOS_ADDRESS_SIFDMA_TIMES_BASE 0x00000038
+#define BIOS_ADDRESS_SIFDMA_TIMES_END (BIOS_ADDRESS_SIFDMA_TIMES_BASE + (4 * BIOS_SIFDMA_COUNT))
+#define BIOS_ADDRESS_INTERRUPT_THREAD_CONTEXT BIOS_ADDRESS_SIFDMA_TIMES_END
 #define BIOS_ADDRESS_INTCHANDLER_BASE 0x0000A000
 #define BIOS_ADDRESS_DMACHANDLER_BASE 0x0000C000
 #define BIOS_ADDRESS_SEMAPHORE_BASE 0x0000E000
+#define BIOS_ADDRESS_CUSTOMSYSCALL_BASE 0x00010000
 #define BIOS_ADDRESS_ALARM_BASE 0x00010800
 #define BIOS_ADDRESS_THREAD_BASE 0x00011000
 
@@ -79,6 +84,9 @@
 
 #define PATCHESFILENAME "patches.xml"
 #define LOG_NAME ("ps2os")
+
+#define SYSCALL_CUSTOM_RESCHEDULE 0x666
+#define SYSCALL_CUSTOM_EXITINTERRUPT 0x667
 
 #define SYSCALL_NAME_EXIT "osExit"
 #define SYSCALL_NAME_LOADEXECPS2 "osLoadExecPS2"
@@ -233,12 +241,15 @@ CPS2OS::CPS2OS(CMIPS& ee, uint8* ram, uint8* bios, uint8* spr, CGSHandler*& gs, 
     , m_alarms(reinterpret_cast<ALARM*>(m_ram + BIOS_ADDRESS_ALARM_BASE), BIOS_ID_BASE, MAX_ALARM)
     , m_currentThreadId(reinterpret_cast<uint32*>(m_ram + BIOS_ADDRESS_CURRENT_THREAD_ID))
     , m_idleThreadId(reinterpret_cast<uint32*>(m_ram + BIOS_ADDRESS_IDLE_THREAD_ID))
+    , m_tlblExceptionHandler(reinterpret_cast<uint32*>(m_ram + BIOS_ADDRESS_TLB_READEXCEPTION_HANDLER))
+    , m_tlbsExceptionHandler(reinterpret_cast<uint32*>(m_ram + BIOS_ADDRESS_TLB_WRITEEXCEPTION_HANDLER))
     , m_sifDmaNextIdx(reinterpret_cast<uint32*>(m_ram + BIOS_ADDRESS_SIFDMA_NEXT_INDEX))
     , m_sifDmaTimes(reinterpret_cast<uint32*>(m_ram + BIOS_ADDRESS_SIFDMA_TIMES_BASE))
     , m_threadSchedule(m_threads, reinterpret_cast<uint32*>(m_ram + BIOS_ADDRESS_THREADSCHEDULE_BASE))
     , m_intcHandlerQueue(m_intcHandlers, reinterpret_cast<uint32*>(m_ram + BIOS_ADDRESS_INTCHANDLERQUEUE_BASE))
     , m_dmacHandlerQueue(m_dmacHandlers, reinterpret_cast<uint32*>(m_ram + BIOS_ADDRESS_DMACHANDLERQUEUE_BASE))
 {
+	static_assert((BIOS_ADDRESS_SEMAPHORE_BASE + (sizeof(SEMAPHORE) * MAX_SEMAPHORE)) <= BIOS_ADDRESS_CUSTOMSYSCALL_BASE, "Semaphore overflow");
 }
 
 CPS2OS::~CPS2OS()
@@ -764,15 +775,15 @@ void CPS2OS::AssembleInterruptHandler()
 	assembler.ORI(CMIPS::T0, CMIPS::T0, CMIPS::STATUS_IE);
 	assembler.MTC0(CMIPS::T0, CCOP_SCU::STATUS);
 
+	//Prologue
+
 	//Move back SP into K0 before restoring state
 	assembler.ADDIU(CMIPS::K0, CMIPS::SP, CMIPS::R0);
+	//Read EPC from 0x220
+	assembler.LW(CMIPS::A0, 0x0220, CMIPS::K0);
 
-	//Restore EPC
-	assembler.LW(CMIPS::T0, 0x0220, CMIPS::K0);
-	assembler.MTC0(CMIPS::T0, CCOP_SCU::EPC);
-
-	//Prologue
-	assembler.ERET();
+	assembler.ADDIU(CMIPS::V1, CMIPS::R0, SYSCALL_CUSTOM_EXITINTERRUPT);
+	assembler.SYSCALL();
 }
 
 void CPS2OS::AssembleDmacHandler()
@@ -962,7 +973,7 @@ void CPS2OS::AssembleIdleThreadProc()
 {
 	CMIPSAssembler assembler((uint32*)&m_bios[BIOS_ADDRESS_IDLETHREADPROC - BIOS_ADDRESS_BASE]);
 
-	assembler.ADDIU(CMIPS::V1, CMIPS::R0, 0x666);
+	assembler.ADDIU(CMIPS::V1, CMIPS::R0, SYSCALL_CUSTOM_RESCHEDULE);
 	assembler.SYSCALL();
 
 	assembler.BEQ(CMIPS::R0, CMIPS::R0, 0xFFFD);
@@ -1033,7 +1044,7 @@ void CPS2OS::AssembleAlarmHandler()
 
 uint32* CPS2OS::GetCustomSyscallTable()
 {
-	return (uint32*)&m_ram[0x00010000];
+	return (uint32*)&m_ram[BIOS_ADDRESS_CUSTOMSYSCALL_BASE];
 }
 
 void CPS2OS::LinkThread(uint32 threadId)
@@ -1109,37 +1120,7 @@ void CPS2OS::ThreadSwitchContext(uint32 id)
 		//Idle thread doesn't have a context
 		if(m_currentThreadId != m_idleThreadId)
 		{
-			thread->contextPtr = m_ee.m_State.nGPR[CMIPS::SP].nV0 - STACKRES;
-			assert(thread->contextPtr >= thread->stackBase);
-
-			auto context = reinterpret_cast<THREADCONTEXT*>(GetStructPtr(thread->contextPtr));
-
-			//Save the context
-			for(uint32 i = 0; i < 0x20; i++)
-			{
-				if(i == CMIPS::R0) continue;
-				if(i == CMIPS::K0) continue;
-				if(i == CMIPS::K1) continue;
-				context->gpr[i] = m_ee.m_State.nGPR[i];
-			}
-			for(uint32 i = 0; i < 0x20; i++)
-			{
-				context->cop1[i] = m_ee.m_State.nCOP1[i];
-			}
-			auto& sa = context->gpr[CMIPS::R0].nV0;
-			auto& hi = context->gpr[CMIPS::K0];
-			auto& lo = context->gpr[CMIPS::K1];
-			sa = m_ee.m_State.nSA >> 3; //Act as if MFSA was used
-			hi.nV[0] = m_ee.m_State.nHI[0];
-			hi.nV[1] = m_ee.m_State.nHI[1];
-			hi.nV[2] = m_ee.m_State.nHI1[0];
-			hi.nV[3] = m_ee.m_State.nHI1[1];
-			lo.nV[0] = m_ee.m_State.nLO[0];
-			lo.nV[1] = m_ee.m_State.nLO[1];
-			lo.nV[2] = m_ee.m_State.nLO1[0];
-			lo.nV[3] = m_ee.m_State.nLO1[1];
-			context->cop1a = m_ee.m_State.nCOP1A;
-			context->fcsr = m_ee.m_State.nFCSR;
+			ThreadSaveContext(thread, false);
 		}
 	}
 
@@ -1154,38 +1135,86 @@ void CPS2OS::ThreadSwitchContext(uint32 id)
 		//Idle thread doesn't have a context
 		if(id != m_idleThreadId)
 		{
-			assert(thread->contextPtr != 0);
-			auto context = reinterpret_cast<const THREADCONTEXT*>(GetStructPtr(thread->contextPtr));
-
-			for(uint32 i = 0; i < 0x20; i++)
-			{
-				if(i == CMIPS::R0) continue;
-				if(i == CMIPS::K0) continue;
-				if(i == CMIPS::K1) continue;
-				m_ee.m_State.nGPR[i] = context->gpr[i];
-			}
-			for(uint32 i = 0; i < 0x20; i++)
-			{
-				m_ee.m_State.nCOP1[i] = context->cop1[i];
-			}
-			auto& sa = context->gpr[CMIPS::R0].nV0;
-			auto& hi = context->gpr[CMIPS::K0];
-			auto& lo = context->gpr[CMIPS::K1];
-			m_ee.m_State.nSA = (sa & 0x0F) << 3; //Act as if MTSA was used
-			m_ee.m_State.nHI[0] = hi.nV[0];
-			m_ee.m_State.nHI[1] = hi.nV[1];
-			m_ee.m_State.nHI1[0] = hi.nV[2];
-			m_ee.m_State.nHI1[1] = hi.nV[3];
-			m_ee.m_State.nLO[0] = lo.nV[0];
-			m_ee.m_State.nLO[1] = lo.nV[1];
-			m_ee.m_State.nLO1[0] = lo.nV[2];
-			m_ee.m_State.nLO1[1] = lo.nV[3];
-			m_ee.m_State.nCOP1A = context->cop1a;
-			m_ee.m_State.nFCSR = context->fcsr;
+			ThreadLoadContext(thread, false);
 		}
 	}
 
 	CLog::GetInstance().Print(LOG_NAME, "New thread elected (id = %i).\r\n", id);
+}
+
+void CPS2OS::ThreadSaveContext(THREAD* thread, bool interrupt)
+{
+	if(interrupt)
+	{
+		thread->contextPtr = BIOS_ADDRESS_INTERRUPT_THREAD_CONTEXT;
+	}
+	else
+	{
+		thread->contextPtr = m_ee.m_State.nGPR[CMIPS::SP].nV0 - STACKRES;
+		assert(thread->contextPtr >= thread->stackBase);
+	}
+
+	auto context = reinterpret_cast<THREADCONTEXT*>(GetStructPtr(thread->contextPtr));
+
+	//Save the context
+	for(uint32 i = 0; i < 0x20; i++)
+	{
+		if(i == CMIPS::R0) continue;
+		if(i == CMIPS::K0) continue;
+		if(i == CMIPS::K1) continue;
+		context->gpr[i] = m_ee.m_State.nGPR[i];
+	}
+	for(uint32 i = 0; i < 0x20; i++)
+	{
+		context->cop1[i] = m_ee.m_State.nCOP1[i];
+	}
+	auto& sa = context->gpr[CMIPS::R0].nV0;
+	auto& hi = context->gpr[CMIPS::K0];
+	auto& lo = context->gpr[CMIPS::K1];
+	sa = m_ee.m_State.nSA >> 3; //Act as if MFSA was used
+	hi.nV[0] = m_ee.m_State.nHI[0];
+	hi.nV[1] = m_ee.m_State.nHI[1];
+	hi.nV[2] = m_ee.m_State.nHI1[0];
+	hi.nV[3] = m_ee.m_State.nHI1[1];
+	lo.nV[0] = m_ee.m_State.nLO[0];
+	lo.nV[1] = m_ee.m_State.nLO[1];
+	lo.nV[2] = m_ee.m_State.nLO1[0];
+	lo.nV[3] = m_ee.m_State.nLO1[1];
+	context->cop1a = m_ee.m_State.nCOP1A;
+	context->fcsr = m_ee.m_State.nFCSR;
+}
+
+void CPS2OS::ThreadLoadContext(THREAD* thread, bool interrupt)
+{
+	assert(thread->contextPtr != 0);
+	assert(!interrupt || (thread->contextPtr == BIOS_ADDRESS_INTERRUPT_THREAD_CONTEXT));
+
+	auto context = reinterpret_cast<const THREADCONTEXT*>(GetStructPtr(thread->contextPtr));
+	for(uint32 i = 0; i < 0x20; i++)
+	{
+		if(i == CMIPS::R0) continue;
+		if(i == CMIPS::K0) continue;
+		if(i == CMIPS::K1) continue;
+		m_ee.m_State.nGPR[i] = context->gpr[i];
+	}
+	for(uint32 i = 0; i < 0x20; i++)
+	{
+		m_ee.m_State.nCOP1[i] = context->cop1[i];
+	}
+	auto& sa = context->gpr[CMIPS::R0].nV0;
+	auto& hi = context->gpr[CMIPS::K0];
+	auto& lo = context->gpr[CMIPS::K1];
+	m_ee.m_State.nSA = (sa & 0x0F) << 3; //Act as if MTSA was used
+	m_ee.m_State.nHI[0] = hi.nV[0];
+	m_ee.m_State.nHI[1] = hi.nV[1];
+	m_ee.m_State.nHI1[0] = hi.nV[2];
+	m_ee.m_State.nHI1[1] = hi.nV[3];
+	m_ee.m_State.nLO[0] = lo.nV[0];
+	m_ee.m_State.nLO[1] = lo.nV[1];
+	m_ee.m_State.nLO1[0] = lo.nV[2];
+	m_ee.m_State.nLO1[1] = lo.nV[3];
+	m_ee.m_State.nCOP1A = context->cop1a;
+	m_ee.m_State.nFCSR = context->fcsr;
 }
 
 void CPS2OS::ThreadReset(uint32 id)
@@ -1344,7 +1373,12 @@ void CPS2OS::HandleInterrupt()
 		return;
 	}
 
-	ThreadSwitchContext(m_idleThreadId);
+	if(m_currentThreadId != m_idleThreadId)
+	{
+		auto thread = m_threads[m_currentThreadId];
+		ThreadSaveContext(thread, true);
+	}
+
 	bool interrupted = m_ee.GenerateInterrupt(BIOS_ADDRESS_INTERRUPTHANDLER);
 	assert(interrupted);
 }
@@ -1489,6 +1523,19 @@ void CPS2OS::sc_ExecPS2()
 void CPS2OS::sc_SetVTLBRefillHandler()
 {
 	//TODO: Enable TLB processing
+
+	uint32 cause = m_ee.m_State.nGPR[SC_PARAM0].nV0;
+	uint32 handler = m_ee.m_State.nGPR[SC_PARAM1].nV0;
+
+	switch(cause)
+	{
+	case CCOP_SCU::CAUSE_TLBL:
+		m_tlblExceptionHandler = handler;
+		break;
+	case CCOP_SCU::CAUSE_TLBS:
+		m_tlbsExceptionHandler = handler;
+		break;
+	}
 }
 
 //0E
@@ -2403,6 +2450,7 @@ void CPS2OS::sc_CreateSema()
 	auto sema = m_semaphores[id];
 	sema->count = semaParam->initCount;
 	sema->maxCount = semaParam->maxCount;
+	sema->option = semaParam->option;
 	sema->waitCount = 0;
 
 	assert(sema->count <= sema->maxCount);
@@ -2550,6 +2598,7 @@ void CPS2OS::sc_ReferSemaStatus()
 	semaParam->count = sema->count;
 	semaParam->maxCount = sema->maxCount;
 	semaParam->waitThreads = sema->waitCount;
+	semaParam->option = sema->option;
 
 	m_ee.m_State.nGPR[SC_RETURN].nD0 = id;
 }
@@ -2850,9 +2899,22 @@ void CPS2OS::HandleSyscall()
 
 	uint32 func = m_ee.m_State.nGPR[3].nV[0];
 
-	if(func == 0x666)
+	if(func == SYSCALL_CUSTOM_RESCHEDULE)
 	{
 		//Reschedule
+		ThreadShakeAndBake();
+	}
+	else if(func == SYSCALL_CUSTOM_EXITINTERRUPT)
+	{
+		//Execute ERET
+		m_ee.m_State.nCOP0[CCOP_SCU::STATUS] &= ~(CMIPS::STATUS_EXL);
+		m_ee.m_State.nPC = m_ee.m_State.nGPR[CMIPS::A0].nV0;
+
+		if(m_currentThreadId != m_idleThreadId)
+		{
+			auto thread = m_threads[m_currentThreadId];
+			ThreadLoadContext(thread, true);
+		}
 		ThreadShakeAndBake();
 	}
 	else
