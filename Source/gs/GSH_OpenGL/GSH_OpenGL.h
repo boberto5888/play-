@@ -367,7 +367,7 @@ private:
 	bool m_forceBilinearTextures = false;
 	unsigned int m_fbScale = 1;
 	bool m_multisampleEnabled = false;
-	bool m_accurateAlphaTestEnabled = false;
+	bool m_accurateAlphaTestEnabled = true;
 
 	uint8* m_pCvtBuffer;
 
