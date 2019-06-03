@@ -3,19 +3,10 @@ image: Visual Studio 2017
 environment:
   CONFIG_TYPE: Release
   matrix:
-  - BUILD_TYPE: Visual Studio 15 2017
-    BUILD_PLAY: ON
-    QT_FLAVOR: msvc2017 
-    INSTALLER_SCRIPT: installer32.nsi
   - BUILD_TYPE: Visual Studio 15 2017 Win64
     BUILD_PLAY: ON
     INSTALLER_SCRIPT: installer64.nsi
     QT_FLAVOR: msvc2017_64
-  - BUILD_TYPE: Visual Studio 15 2017 Win64
-    BUILD_PSFPLAYER: ON
-    INSTALLER_SCRIPT: installer64.nsi
-  - BUILD_TYPE: Visual Studio 15 2017 Win64
-    BUILD_PSFAOT: ON
 
 build_script:
 - cmd: >-
@@ -56,12 +47,3 @@ build_script:
 artifacts:
 - path: $(REPO_COMMIT_SHORT)\*.exe
   name: Binaries
-deploy:
-- provider: S3
-  access_key_id: AKIAJGVKEDYESR2BIP7Q
-  secret_access_key:
-    secure: JFQy5OF0YXW/H6mcQtfxbd4dAJ+m88p5UwOrazZnfHXecN2M08LklayUlaX/51tI
-  bucket: playbuilds
-  region: us-east-2
-  artifact: Binaries
-  set_public: true
