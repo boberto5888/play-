@@ -88,6 +88,14 @@ public:
 		BC_Z,
 		BC_W,
 	};
+	
+	enum FIELD
+	{
+		X,
+		Y,
+		Z,
+		W,
+	};
 
 	CVuAssembler(uint32*);
 	virtual ~CVuAssembler();
@@ -108,6 +116,7 @@ public:
 		static uint32 MADDbc(DEST, VF_REGISTER, VF_REGISTER, VF_REGISTER, BROADCAST);
 		static uint32 MADDAbc(DEST, VF_REGISTER, VF_REGISTER, BROADCAST);
 		static uint32 MULi(DEST, VF_REGISTER, VF_REGISTER);
+		static uint32 MULq(DEST, VF_REGISTER, VF_REGISTER);
 		static uint32 MULAbc(DEST, VF_REGISTER, VF_REGISTER, BROADCAST);
 		static uint32 NOP();
 		static uint32 OPMULA(VF_REGISTER, VF_REGISTER);
@@ -118,6 +127,7 @@ public:
 	class Lower
 	{
 	public:
+		static uint32 DIV(VF_REGISTER, FIELD, VF_REGISTER, FIELD);
 		static uint32 FMAND(VI_REGISTER, VI_REGISTER);
 		static uint32 FSAND(VI_REGISTER, uint16);
 		static uint32 NOP();

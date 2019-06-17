@@ -17,6 +17,7 @@ endif()
 
 add_executable(VuTest
 	AddTest.cpp
+	DivLatencyTest.cpp
 	FlagsTest2.cpp
 	FlagsTest.cpp
 	Main.cpp

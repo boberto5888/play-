@@ -17,6 +17,10 @@ void CVuBasicBlock::CompileRange(CMipsJitter* jitter)
 	assert(((m_end + 4) & 0x07) == 0);
 	auto arch = static_cast<CMA_VU*>(m_context.m_pArch);
 
+	uint32 relativePipeTime = 0;
+	uint32 writeFTime[32];
+	memset(writeFTime, 0, sizeof(writeFTime));
+
 	auto integerBranchDelayInfo = GetIntegerBranchDelayInfo();
 
 	bool hasPendingXgKick = false;
