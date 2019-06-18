@@ -300,8 +300,6 @@ private:
 	TEXTURE_INFO PrepareTexture(const TEX0&);
 	GLuint PreparePalette(const TEX0&);
 
-	float GetZ(float);
-
 	void VertexKick(uint8, uint64);
 
 	Framework::OpenGl::ProgramPtr GetShaderFromCaps(const SHADERCAPS&);
@@ -371,7 +369,6 @@ private:
 	float m_nPrimOfsY;
 	uint32 m_nTexWidth;
 	uint32 m_nTexHeight;
-	float m_nMaxZ;
 
 	bool m_forceBilinearTextures = false;
 	unsigned int m_fbScale = 1;

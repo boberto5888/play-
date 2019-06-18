@@ -78,7 +78,6 @@ void CGSH_OpenGL::InitializeImpl()
 		m_paletteCache.push_back(PalettePtr(new CPalette()));
 	}
 
-	m_nMaxZ = 32768.0;
 	m_renderState.isValid = false;
 	m_validGlState = 0;
 }
@@ -553,19 +552,6 @@ unsigned int CGSH_OpenGL::GetCurrentReadCircuit()
 	}
 	break;
 	}
-}
-
-float CGSH_OpenGL::GetZ(float nZ)
-{
-	if(nZ == 0)
-	{
-		return -1;
-	}
-
-	nZ -= m_nMaxZ;
-	if(nZ > m_nMaxZ) return 1.0;
-	if(nZ < -m_nMaxZ) return -1.0;
-	return nZ / m_nMaxZ;
 }
 
 /////////////////////////////////////////////////////////////
@@ -1447,11 +1433,10 @@ void CGSH_OpenGL::Prim_Point()
 
 	float x = xyz.GetX();
 	float y = xyz.GetY();
-	float z = xyz.GetZ();
+	uint32 z = xyz.nZ;
 
 	x -= m_nPrimOfsX;
 	y -= m_nPrimOfsY;
-	z = GetZ(z);
 
 	auto color = MakeColor(
 	    rgbaq.nR, rgbaq.nG,
