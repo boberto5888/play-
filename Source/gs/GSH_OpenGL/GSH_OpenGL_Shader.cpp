@@ -5,7 +5,8 @@
 #ifdef GLES_COMPATIBILITY
 #define GLSL_VERSION "#version 300 es"
 #else
-#define GLSL_VERSION "#version 150"
+//#define GLSL_VERSION "#version 150"
+#define GLSL_VERSION "#version 420"
 #endif
 
 static const char* s_andFunction =
@@ -93,10 +94,12 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateVertexShader(const SHADERCAPS& c
 	shaderBuilder << "	mat4 g_texMatrix;" << std::endl;
 	shaderBuilder << "};" << std::endl;
 
-	shaderBuilder << "in vec3 a_position;" << std::endl;
+	shaderBuilder << "in vec2 a_position;" << std::endl;
+	shaderBuilder << "in uint a_depth;" << std::endl;
 	shaderBuilder << "in vec4 a_color;" << std::endl;
 	shaderBuilder << "in vec3 a_texCoord;" << std::endl;
 
+	shaderBuilder << "out float v_depth;" << std::endl;
 	shaderBuilder << "out vec4 v_color;" << std::endl;
 	shaderBuilder << "out vec3 v_texCoord;" << std::endl;
 	if(caps.hasFog)
@@ -108,13 +111,14 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateVertexShader(const SHADERCAPS& c
 	shaderBuilder << "void main()" << std::endl;
 	shaderBuilder << "{" << std::endl;
 	shaderBuilder << "	vec4 texCoord = g_texMatrix * vec4(a_texCoord, 1);" << std::endl;
+	shaderBuilder << "	v_depth = a_depth / 4294967296.0;" << std::endl;
 	shaderBuilder << "	v_color = a_color;" << std::endl;
 	shaderBuilder << "	v_texCoord = texCoord.xyz;" << std::endl;
 	if(caps.hasFog)
 	{
 		shaderBuilder << "	v_fog = a_fog;" << std::endl;
 	}
-	shaderBuilder << "	gl_Position = g_projMatrix * vec4(a_position, 1);" << std::endl;
+	shaderBuilder << "	gl_Position = g_projMatrix * vec4(a_position, 0, 1);" << std::endl;
 	shaderBuilder << "}" << std::endl;
 
 	auto shaderSource = shaderBuilder.str();
@@ -134,9 +138,11 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 	std::stringstream shaderBuilder;
 
 	shaderBuilder << GLSL_VERSION << std::endl;
+	shaderBuilder << "#extension GL_INTEL_fragment_shader_ordering : enable" << std::endl;
 
 	shaderBuilder << "precision mediump float;" << std::endl;
 
+	shaderBuilder << "in highp float v_depth;" << std::endl;
 	shaderBuilder << "in vec4 v_color;" << std::endl;
 	shaderBuilder << "in highp vec3 v_texCoord;" << std::endl;
 	if(caps.hasFog)
@@ -152,6 +158,9 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 	shaderBuilder << "uniform sampler2D g_texture;" << std::endl;
 	shaderBuilder << "uniform sampler2D g_palette;" << std::endl;
 
+	//shaderBuilder << "uniform layout(rgba8) image2D g_framebuffer;" << std::endl;
+	shaderBuilder << "uniform layout(r32ui) uimage2D g_depthbuffer;" << std::endl;
+
 	shaderBuilder << "layout(std140) uniform FragmentParams" << std::endl;
 	shaderBuilder << "{" << std::endl;
 	shaderBuilder << "	vec2 g_textureSize;" << std::endl;
@@ -161,6 +170,7 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 	shaderBuilder << "	float g_texA0;" << std::endl;
 	shaderBuilder << "	float g_texA1;" << std::endl;
 	shaderBuilder << "	uint g_alphaRef;" << std::endl;
+	shaderBuilder << "	uint g_depthMask;" << std::endl;
 	shaderBuilder << "	vec3 g_fogColor;" << std::endl;
 	shaderBuilder << "};" << std::endl;
 
@@ -198,6 +208,8 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 
 	shaderBuilder << "void main()" << std::endl;
 	shaderBuilder << "{" << std::endl;
+
+	shaderBuilder << "	uint depth = uint(v_depth * 4294967296.0);" << std::endl;
 
 	shaderBuilder << "	highp vec3 texCoord = v_texCoord;" << std::endl;
 	shaderBuilder << "	texCoord.st /= texCoord.p;" << std::endl;
@@ -333,6 +345,38 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 #else
 	shaderBuilder << "	fragColor.a = textureColor.a;" << std::endl;
 	shaderBuilder << "	blendColor.a = clamp(textureColor.a * 2.0, 0.0, 1.0);" << std::endl;
+#endif
+
+#ifdef DEPTH_BUFFER_EMULATION
+	shaderBuilder << "	beginFragmentShaderOrderingINTEL();" << std::endl;
+	shaderBuilder << "	ivec2 coords = ivec2 (gl_FragCoord.xy);" << std::endl;
+
+	//Depth test
+	switch(caps.depthTestMethod)
+	{
+	case DEPTH_TEST_ALWAYS:
+		break;
+	case DEPTH_TEST_NEVER:
+		shaderBuilder << "	discard;" << std::endl;
+		break;
+	case DEPTH_TEST_GEQUAL:
+		shaderBuilder << "	uint depthValue = imageLoad(g_depthbuffer, coords).r;" << std::endl;
+		shaderBuilder << "	if(depth < depthValue) discard;" << std::endl;
+		break;
+	case DEPTH_TEST_GREATER:
+		shaderBuilder << "	uint depthValue = imageLoad(g_depthbuffer, coords).r;" << std::endl;
+		shaderBuilder << "	if(depth <= depthValue) discard;" << std::endl;
+		break;
+	}
+
+	//Update depth buffer
+	if(caps.depthWriteEnabled)
+	{
+		shaderBuilder << "	imageStore(g_depthbuffer, coords, uvec4(depth & g_depthMask));" << std::endl;
+	}
+
+#else
+	shaderBuilder << "	gl_FragDepth = v_depth;" << std::endl;
 #endif
 
 	shaderBuilder << "}" << std::endl;

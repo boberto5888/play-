@@ -276,6 +276,16 @@ void CGSH_OpenGL::FlipImpl()
 			glBindTexture(GL_TEXTURE_2D, framebuffer->m_texture);
 			DumpTexture(framebuffer->m_width * m_fbScale, framebuffer->m_height * m_fbScale, framebuffer->m_basePtr);
 		}
+		for(const auto& depthbuffer : m_depthbuffers)
+		{
+			glBindTexture(GL_TEXTURE_2D, depthbuffer->m_depthBufferImage);
+			std::vector<uint32> data;
+			uint32 realWidth = depthbuffer->m_width * m_fbScale;
+			uint32 realHeight = depthbuffer->m_height * m_fbScale;
+			data.resize(realWidth * realHeight);
+			glGetTexImage(GL_TEXTURE_2D, 0, GL_RED_INTEGER, GL_UNSIGNED_INT, data.data());
+			CHECKGLERROR();
+		}
 		glBindTexture(GL_TEXTURE_2D, 0);
 	}
 
@@ -451,8 +461,12 @@ Framework::OpenGl::CVertexArray CGSH_OpenGL::GeneratePrimVertexArray()
 	glBindBuffer(GL_ARRAY_BUFFER, m_primBuffer);
 
 	glEnableVertexAttribArray(static_cast<GLuint>(PRIM_VERTEX_ATTRIB::POSITION));
-	glVertexAttribPointer(static_cast<GLuint>(PRIM_VERTEX_ATTRIB::POSITION), 3, GL_FLOAT,
+	glVertexAttribPointer(static_cast<GLuint>(PRIM_VERTEX_ATTRIB::POSITION), 2, GL_FLOAT,
 	                      GL_FALSE, sizeof(PRIM_VERTEX), reinterpret_cast<const GLvoid*>(offsetof(PRIM_VERTEX, x)));
+
+	glEnableVertexAttribArray(static_cast<GLuint>(PRIM_VERTEX_ATTRIB::DEPTH));
+	glVertexAttribIPointer(static_cast<GLuint>(PRIM_VERTEX_ATTRIB::DEPTH), 1, GL_UNSIGNED_INT,
+	                       sizeof(PRIM_VERTEX), reinterpret_cast<const GLvoid*>(offsetof(PRIM_VERTEX, z)));
 
 	glEnableVertexAttribArray(static_cast<GLuint>(PRIM_VERTEX_ATTRIB::COLOR));
 	glVertexAttribPointer(static_cast<GLuint>(PRIM_VERTEX_ATTRIB::COLOR), 4, GL_UNSIGNED_BYTE,
@@ -580,6 +594,18 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GetShaderFromCaps(const SHADERCAPS& s
 			glUniform1i(paletteUniform, 1);
 		}
 
+		auto framebufferUniform = glGetUniformLocation(*shader, "g_framebuffer");
+		if(framebufferUniform != -1)
+		{
+			glUniform1i(framebufferUniform, 0);
+		}
+
+		auto depthbufferUniform = glGetUniformLocation(*shader, "g_depthbuffer");
+		if(depthbufferUniform != -1)
+		{
+			glUniform1i(depthbufferUniform, 1);
+		}
+
 		auto vertexParamsUniformBlock = glGetUniformBlockIndex(*shader, "VertexParams");
 		if(vertexParamsUniformBlock != GL_INVALID_INDEX)
 		{
@@ -623,7 +649,7 @@ void CGSH_OpenGL::SetRenderingContext(uint64 primReg)
 
 	auto shaderCaps = make_convertible<SHADERCAPS>(0);
 	FillShaderCapsFromTexture(shaderCaps, tex0Reg, tex1Reg, texAReg, clampReg);
-	FillShaderCapsFromTest(shaderCaps, testReg);
+	FillShaderCapsFromTestAndZbuf(shaderCaps, testReg, zbufReg);
 	auto technique = GetTechniqueFromTest(testReg);
 
 	if(prim.nFog)
@@ -963,20 +989,25 @@ void CGSH_OpenGL::SetupDepthBuffer(uint64 zbufReg, uint64 testReg)
 	auto zbuf = make_convertible<ZBUF>(zbufReg);
 	auto test = make_convertible<TEST>(testReg);
 
+	uint32 depthMask = 0;
 	switch(CGsPixelFormats::GetPsmPixelSize(zbuf.nPsm))
 	{
 	case 16:
-		m_nMaxZ = 32768.0f;
+		depthMask = 0xFFFF;
 		break;
 	case 24:
-		m_nMaxZ = 8388608.0f;
+		depthMask = 0xFFFFFF;
 		break;
 	default:
 	case 32:
-		m_nMaxZ = 2147483647.0f;
+		depthMask = 0xFFFFFFFF;
 		break;
 	}
 
+	m_fragmentParams.depthMask = depthMask;
+	m_validGlState &= ~GLSTATE_FRAGMENT_PARAMS;
+
+#ifndef DEPTH_BUFFER_EMULATION
 	bool depthWriteEnabled = (zbuf.nMask ? false : true);
 	//If alpha test is enabled for always failing and update only colors, depth writes are disabled
 	if(
@@ -988,6 +1019,7 @@ void CGSH_OpenGL::SetupDepthBuffer(uint64 zbufReg, uint64 testReg)
 	}
 	m_renderState.depthMask = depthWriteEnabled;
 	m_validGlState &= ~GLSTATE_DEPTHMASK;
+#endif
 }
 
 void CGSH_OpenGL::SetupFramebuffer(uint64 frameReg, uint64 zbufReg, uint64 scissorReg, uint64 testReg)
@@ -1058,7 +1090,9 @@ void CGSH_OpenGL::SetupFramebuffer(uint64 frameReg, uint64 zbufReg, uint64 sciss
 	assert(result == GL_FRAMEBUFFER_COMPLETE);
 
 	m_renderState.framebufferHandle = framebuffer->m_framebuffer;
-	m_validGlState |= GLSTATE_FRAMEBUFFER; //glBindFramebuffer used to set just above
+	m_renderState.framebufferTextureHandle = framebuffer->m_texture;
+	m_renderState.depthbufferTextureHandle = depthbuffer->m_depthBufferImage;
+	m_validGlState &= ~GLSTATE_FRAMEBUFFER; //glBindFramebuffer used to set just above
 
 	//We assume that we will be drawing to this framebuffer and that we'll need
 	//to resolve samples at some point if multisampling is enabled
@@ -1176,9 +1210,10 @@ void CGSH_OpenGL::FillShaderCapsFromTexture(SHADERCAPS& shaderCaps, const uint64
 	shaderCaps.texFunction = tex0.nFunction;
 }
 
-void CGSH_OpenGL::FillShaderCapsFromTest(SHADERCAPS& shaderCaps, const uint64& testReg)
+void CGSH_OpenGL::FillShaderCapsFromTestAndZbuf(SHADERCAPS& shaderCaps, const uint64& testReg, const uint64& zbufReg)
 {
 	auto test = make_convertible<TEST>(testReg);
+	auto zbuf = make_convertible<ZBUF>(zbufReg);
 
 	if(test.nAlphaEnabled)
 	{
@@ -1198,6 +1233,26 @@ void CGSH_OpenGL::FillShaderCapsFromTest(SHADERCAPS& shaderCaps, const uint64& t
 	{
 		shaderCaps.hasAlphaTest = 0;
 	}
+
+	if(test.nDepthEnabled)
+	{
+		shaderCaps.depthTestMethod = test.nDepthMethod;
+	}
+	else
+	{
+		shaderCaps.depthTestMethod = DEPTH_TEST_ALWAYS;
+	}
+
+	bool depthWriteEnabled = (zbuf.nMask ? false : true);
+	//If alpha test is enabled for always failing and update only colors, depth writes are disabled
+	if(
+	    (test.nAlphaEnabled == 1) &&
+	    (test.nAlphaMethod == ALPHA_TEST_NEVER) &&
+	    ((test.nAlphaFail == ALPHA_TEST_FAIL_FBONLY) || (test.nAlphaFail == ALPHA_TEST_FAIL_RGBONLY)))
+	{
+		depthWriteEnabled = false;
+	}
+	shaderCaps.depthWriteEnabled = depthWriteEnabled;
 }
 
 CGSH_OpenGL::TECHNIQUE CGSH_OpenGL::GetTechniqueFromTest(const uint64& testReg)
@@ -1422,19 +1477,16 @@ void CGSH_OpenGL::Prim_Line()
 
 	float nX1 = xyz[0].GetX();
 	float nY1 = xyz[0].GetY();
-	float nZ1 = xyz[0].GetZ();
+	uint32 nZ1 = xyz[0].nZ;
 	float nX2 = xyz[1].GetX();
 	float nY2 = xyz[1].GetY();
-	float nZ2 = xyz[1].GetZ();
+	uint32 nZ2 = xyz[1].nZ;
 
 	nX1 -= m_nPrimOfsX;
 	nX2 -= m_nPrimOfsX;
 
 	nY1 -= m_nPrimOfsY;
 	nY2 -= m_nPrimOfsY;
-
-	nZ1 = GetZ(nZ1);
-	nZ2 = GetZ(nZ2);
 
 	RGBAQ rgbaq[2];
 	rgbaq[0] <<= m_VtxBuffer[1].nRGBAQ;
@@ -1475,7 +1527,7 @@ void CGSH_OpenGL::Prim_Triangle()
 
 	float nX1 = vertex[0].GetX(), nX2 = vertex[1].GetX(), nX3 = vertex[2].GetX();
 	float nY1 = vertex[0].GetY(), nY2 = vertex[1].GetY(), nY3 = vertex[2].GetY();
-	float nZ1 = vertex[0].GetZ(), nZ2 = vertex[1].GetZ(), nZ3 = vertex[2].GetZ();
+	uint32 nZ1 = vertex[0].nZ, nZ2 = vertex[1].nZ, nZ3 = vertex[2].nZ;
 
 	RGBAQ rgbaq[3];
 	rgbaq[0] <<= m_VtxBuffer[2].nRGBAQ;
@@ -1489,10 +1541,6 @@ void CGSH_OpenGL::Prim_Triangle()
 	nY1 -= m_nPrimOfsY;
 	nY2 -= m_nPrimOfsY;
 	nY3 -= m_nPrimOfsY;
-
-	nZ1 = GetZ(nZ1);
-	nZ2 = GetZ(nZ2);
-	nZ3 = GetZ(nZ3);
 
 	if(m_PrimitiveMode.nFog)
 	{
@@ -1600,7 +1648,7 @@ void CGSH_OpenGL::Prim_Sprite()
 	float nY1 = xyz[0].GetY();
 	float nX2 = xyz[1].GetX();
 	float nY2 = xyz[1].GetY();
-	float nZ = xyz[1].GetZ();
+	uint32 nZ = xyz[1].nZ;
 
 	RGBAQ rgbaq[2];
 	rgbaq[0] <<= m_VtxBuffer[1].nRGBAQ;
@@ -1611,8 +1659,6 @@ void CGSH_OpenGL::Prim_Sprite()
 
 	nY1 -= m_nPrimOfsY;
 	nY2 -= m_nPrimOfsY;
-
-	nZ = GetZ(nZ);
 
 	float nS[2] = {0, 0};
 	float nT[2] = {0, 0};
@@ -1774,7 +1820,9 @@ void CGSH_OpenGL::DoRenderPass()
 
 	if((m_validGlState & GLSTATE_DEPTHTEST) == 0)
 	{
+#ifndef DEPTH_BUFFER_EMULATION
 		m_renderState.depthTest ? glEnable(GL_DEPTH_TEST) : glDisable(GL_DEPTH_TEST);
+#endif
 		m_validGlState |= GLSTATE_DEPTHTEST;
 	}
 
@@ -1815,6 +1863,9 @@ void CGSH_OpenGL::DoRenderPass()
 	if((m_validGlState & GLSTATE_FRAMEBUFFER) == 0)
 	{
 		glBindFramebuffer(GL_FRAMEBUFFER, m_renderState.framebufferHandle);
+		//glBindImageTexture(0, m_renderState.framebufferTextureHandle, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA8);
+		glBindImageTexture(1, m_renderState.depthbufferTextureHandle, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32UI);
+		CHECKGLERROR();
 		m_validGlState |= GLSTATE_FRAMEBUFFER;
 	}
 
@@ -2436,12 +2487,17 @@ CGSH_OpenGL::CDepthbuffer::CDepthbuffer(uint32 basePtr, uint32 width, uint32 hei
 	glBindRenderbuffer(GL_RENDERBUFFER, m_depthBuffer);
 	if(multisampled)
 	{
-		glRenderbufferStorageMultisample(GL_RENDERBUFFER, NUM_SAMPLES, GL_DEPTH_COMPONENT24, m_width * scale, m_height * scale);
+		glRenderbufferStorageMultisample(GL_RENDERBUFFER, NUM_SAMPLES, GL_DEPTH_COMPONENT32F, m_width * scale, m_height * scale);
 	}
 	else
 	{
-		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, m_width * scale, m_height * scale);
+		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT32F, m_width * scale, m_height * scale);
 	}
+
+	glGenTextures(1, &m_depthBufferImage);
+	glBindTexture(GL_TEXTURE_2D, m_depthBufferImage);
+	glTexStorage2D(GL_TEXTURE_2D, 1, GL_R32UI, m_width * scale, m_height * scale);
+
 	CHECKGLERROR();
 }
 

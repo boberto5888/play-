@@ -13,6 +13,8 @@
 #define PREF_CGSH_OPENGL_RESOLUTION_FACTOR "renderer.opengl.resfactor"
 #define PREF_CGSH_OPENGL_FORCEBILINEARTEXTURES "renderer.opengl.forcebilineartextures"
 
+#define DEPTH_BUFFER_EMULATION
+
 class CGSH_OpenGL : public CGSHandler
 {
 public:
@@ -64,7 +66,9 @@ private:
 		unsigned int hasFog : 1;
 		unsigned int hasAlphaTest : 1;
 		unsigned int alphaTestMethod : 3;
-		unsigned int padding : 15;
+		unsigned int depthWriteEnabled : 1;
+		unsigned int depthTestMethod : 2;
+		unsigned int padding : 12;
 
 		bool isIndexedTextureSource() const
 		{
@@ -99,6 +103,8 @@ private:
 		//OpenGL state
 		GLuint shaderHandle;
 		GLuint framebufferHandle;
+		GLuint framebufferTextureHandle;
+		GLuint depthbufferTextureHandle;
 		GLuint texture0Handle;
 		GLint texture0MinFilter;
 		GLint texture0MagFilter;
@@ -138,7 +144,7 @@ private:
 		float texA0;
 		float texA1;
 		uint32 alphaRef;
-		float padding1;
+		uint32 depthMask;
 		float fogColor[3];
 		float padding2;
 	};
@@ -238,6 +244,7 @@ private:
 		uint32 m_height;
 		uint32 m_psm;
 		GLuint m_depthBuffer;
+		GLuint m_depthBufferImage;
 	};
 	typedef std::shared_ptr<CDepthbuffer> DepthbufferPtr;
 	typedef std::vector<DepthbufferPtr> DepthbufferList;
@@ -261,14 +268,16 @@ private:
 	enum class PRIM_VERTEX_ATTRIB
 	{
 		POSITION = 1,
-		COLOR = 2,
-		TEXCOORD = 3,
-		FOG = 4,
+		DEPTH,
+		COLOR,
+		TEXCOORD,
+		FOG,
 	};
 
 	struct PRIM_VERTEX
 	{
-		float x, y, z;
+		float x, y;
+		uint32 z;
 		uint32 color;
 		float s, t, q;
 		float f;
@@ -333,7 +342,7 @@ private:
 
 	static bool CanRegionRepeatClampModeSimplified(uint32, uint32);
 	void FillShaderCapsFromTexture(SHADERCAPS&, const uint64&, const uint64&, const uint64&, const uint64&);
-	void FillShaderCapsFromTest(SHADERCAPS&, const uint64&);
+	void FillShaderCapsFromTestAndZbuf(SHADERCAPS&, const uint64&, const uint64&);
 	TECHNIQUE GetTechniqueFromTest(const uint64&);
 
 	void SetupTexture(uint64, uint64, uint64, uint64, uint64);
