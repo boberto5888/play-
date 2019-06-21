@@ -9,6 +9,14 @@
 #define GLSL_VERSION "#version 420"
 #endif
 
+enum FRAGMENT_SHADER_ORDERING_MODE
+{
+	FRAGMENT_SHADER_ORDERING_NONE = 0,
+	FRAGMENT_SHADER_ORDERING_INTEL = 1,
+	FRAGMENT_SHADER_ORDERING_NV = 2,
+	FRAGMENT_SHADER_ORDERING_ARB = 3,
+};
+
 static const char* s_andFunction =
     "float and(int a, int b)\r\n"
     "{\r\n"
@@ -137,8 +145,33 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 {
 	std::stringstream shaderBuilder;
 
+	auto orderingMode = FRAGMENT_SHADER_ORDERING_NONE;
+
+	if(GLEW_ARB_fragment_shader_interlock)
+	{
+		orderingMode = FRAGMENT_SHADER_ORDERING_ARB;
+	}
+	//else if(GLEW_NV_fragment_shader_interlock)
+	//{
+	//	orderingMode = FRAGMENT_SHADER_ORDERING_NV;
+	//}
+	else if(GLEW_INTEL_fragment_shader_ordering)
+	{
+		orderingMode = FRAGMENT_SHADER_ORDERING_INTEL;
+	}
+
 	shaderBuilder << GLSL_VERSION << std::endl;
-	shaderBuilder << "#extension GL_INTEL_fragment_shader_ordering : enable" << std::endl;
+
+	switch(orderingMode)
+	{
+	case FRAGMENT_SHADER_ORDERING_ARB:
+		shaderBuilder << "#extension GL_ARB_fragment_shader_interlock : enable" << std::endl;
+		shaderBuilder << "layout(pixel_interlock_ordered) in;" << std::endl;
+		break;
+	case FRAGMENT_SHADER_ORDERING_INTEL:
+		shaderBuilder << "#extension GL_INTEL_fragment_shader_ordering : enable" << std::endl;
+		break;
+	}
 
 	shaderBuilder << "precision mediump float;" << std::endl;
 
@@ -348,33 +381,54 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 #endif
 
 #ifdef DEPTH_BUFFER_EMULATION
-	shaderBuilder << "	beginFragmentShaderOrderingINTEL();" << std::endl;
+	switch(orderingMode)
+	{
+	case FRAGMENT_SHADER_ORDERING_ARB:
+		shaderBuilder << "	beginInvocationInterlockARB();" << std::endl;
+		break;
+	case FRAGMENT_SHADER_ORDERING_INTEL:
+		shaderBuilder << "	beginFragmentShaderOrderingINTEL();" << std::endl;
+		break;
+	}
+
 	shaderBuilder << "	ivec2 coords = ivec2 (gl_FragCoord.xy);" << std::endl;
 
 	//Depth test
+	shaderBuilder << "	bool shouldDiscard = false;" << std::endl;
 	switch(caps.depthTestMethod)
 	{
 	case DEPTH_TEST_ALWAYS:
 		break;
 	case DEPTH_TEST_NEVER:
-		shaderBuilder << "	discard;" << std::endl;
+		shaderBuilder << "	shouldDiscard = true;" << std::endl;
 		break;
 	case DEPTH_TEST_GEQUAL:
 		shaderBuilder << "	uint depthValue = imageLoad(g_depthbuffer, coords).r;" << std::endl;
-		shaderBuilder << "	if(depth < depthValue) discard;" << std::endl;
+		shaderBuilder << "	shouldDiscard = (depth < depthValue);" << std::endl;
 		break;
 	case DEPTH_TEST_GREATER:
 		shaderBuilder << "	uint depthValue = imageLoad(g_depthbuffer, coords).r;" << std::endl;
-		shaderBuilder << "	if(depth <= depthValue) discard;" << std::endl;
+		shaderBuilder << "	shouldDiscard = (depth <= depthValue);" << std::endl;
 		break;
 	}
 
 	//Update depth buffer
 	if(caps.depthWriteEnabled)
 	{
-		shaderBuilder << "	imageStore(g_depthbuffer, coords, uvec4(depth & g_depthMask));" << std::endl;
+		shaderBuilder << "	if(!shouldDiscard)" << std::endl;
+		shaderBuilder << "	{" << std::endl;
+		shaderBuilder << "		imageStore(g_depthbuffer, coords, uvec4(depth & g_depthMask));" << std::endl;
+		shaderBuilder << "	}" << std::endl;
 	}
 
+	switch(orderingMode)
+	{
+	case FRAGMENT_SHADER_ORDERING_ARB:
+		shaderBuilder << "	endInvocationInterlockARB();" << std::endl;
+		break;
+	}
+
+	shaderBuilder << "	if(shouldDiscard) discard;" << std::endl;
 #else
 	shaderBuilder << "	gl_FragDepth = v_depth;" << std::endl;
 #endif
