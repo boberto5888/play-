@@ -119,7 +119,7 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateVertexShader(const SHADERCAPS& c
 	shaderBuilder << "void main()" << std::endl;
 	shaderBuilder << "{" << std::endl;
 	shaderBuilder << "	vec4 texCoord = g_texMatrix * vec4(a_texCoord, 1);" << std::endl;
-	shaderBuilder << "	v_depth = a_depth / 4294967296.0;" << std::endl;
+	shaderBuilder << "	v_depth = float(a_depth) / 4294967296.0;" << std::endl;
 	shaderBuilder << "	v_color = a_color;" << std::endl;
 	shaderBuilder << "	v_texCoord = texCoord.xyz;" << std::endl;
 	if(caps.hasFog)
