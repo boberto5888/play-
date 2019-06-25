@@ -13,8 +13,6 @@
 #define PREF_CGSH_OPENGL_RESOLUTION_FACTOR "renderer.opengl.resfactor"
 #define PREF_CGSH_OPENGL_FORCEBILINEARTEXTURES "renderer.opengl.forcebilineartextures"
 
-#define DEPTH_BUFFER_EMULATION
-
 class CGSH_OpenGL : public CGSHandler
 {
 public:

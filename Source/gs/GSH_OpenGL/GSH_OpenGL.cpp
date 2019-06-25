@@ -997,20 +997,6 @@ void CGSH_OpenGL::SetupDepthBuffer(uint64 zbufReg, uint64 testReg)
 
 	m_fragmentParams.depthMask = depthMask;
 	m_validGlState &= ~GLSTATE_FRAGMENT_PARAMS;
-
-#ifndef DEPTH_BUFFER_EMULATION
-	bool depthWriteEnabled = (zbuf.nMask ? false : true);
-	//If alpha test is enabled for always failing and update only colors, depth writes are disabled
-	if(
-	    (test.nAlphaEnabled == 1) &&
-	    (test.nAlphaMethod == ALPHA_TEST_NEVER) &&
-	    ((test.nAlphaFail == ALPHA_TEST_FAIL_FBONLY) || (test.nAlphaFail == ALPHA_TEST_FAIL_RGBONLY)))
-	{
-		depthWriteEnabled = false;
-	}
-	m_renderState.depthMask = depthWriteEnabled;
-	m_validGlState &= ~GLSTATE_DEPTHMASK;
-#endif
 }
 
 void CGSH_OpenGL::SetupFramebuffer(uint64 frameReg, uint64 zbufReg, uint64 scissorReg, uint64 testReg)
@@ -1810,9 +1796,7 @@ void CGSH_OpenGL::DoRenderPass()
 
 	if((m_validGlState & GLSTATE_DEPTHTEST) == 0)
 	{
-#ifndef DEPTH_BUFFER_EMULATION
-		m_renderState.depthTest ? glEnable(GL_DEPTH_TEST) : glDisable(GL_DEPTH_TEST);
-#endif
+		//m_renderState.depthTest ? glEnable(GL_DEPTH_TEST) : glDisable(GL_DEPTH_TEST);
 		m_validGlState |= GLSTATE_DEPTHTEST;
 	}
 

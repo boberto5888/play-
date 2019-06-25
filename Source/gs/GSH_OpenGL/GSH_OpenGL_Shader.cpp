@@ -381,7 +381,6 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 	shaderBuilder << "	blendColor.a = clamp(textureColor.a * 2.0, 0.0, 1.0);" << std::endl;
 #endif
 
-#ifdef DEPTH_BUFFER_EMULATION
 	switch(orderingMode)
 	{
 	case FRAGMENT_SHADER_ORDERING_ARB:
@@ -430,9 +429,6 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 	}
 
 	shaderBuilder << "	if(shouldDiscard) discard;" << std::endl;
-#else
-	shaderBuilder << "	gl_FragDepth = v_depth;" << std::endl;
-#endif
 
 	shaderBuilder << "}" << std::endl;
 
