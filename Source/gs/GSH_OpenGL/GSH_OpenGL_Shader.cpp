@@ -245,6 +245,8 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 
 	shaderBuilder << "	uint depth = uint(v_depth * 4294967296.0);" << std::endl;
 
+	shaderBuilder << "	bool alphaTestFail = false;" << std::endl;
+
 	shaderBuilder << "	highp vec3 texCoord = v_texCoord;" << std::endl;
 	shaderBuilder << "	texCoord.st /= texCoord.p;" << std::endl;
 
@@ -361,6 +363,11 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 	if(caps.hasAlphaTest)
 	{
 		shaderBuilder << GenerateAlphaTestSection(static_cast<ALPHA_TEST_METHOD>(caps.alphaTestMethod));
+		//Check for early rejection
+		if(caps.alphaFailResult == ALPHA_TEST_FAIL_KEEP)
+		{
+			shaderBuilder << "	if(alphaTestFail) discard;" << std::endl;
+		}
 	}
 
 	if(caps.hasFog)
@@ -391,31 +398,36 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 		break;
 	}
 
-	shaderBuilder << "	ivec2 coords = ivec2 (gl_FragCoord.xy);" << std::endl;
+	shaderBuilder << "	ivec2 coords = ivec2(gl_FragCoord.xy);" << std::endl;
 
 	//Depth test
-	shaderBuilder << "	bool shouldDiscard = false;" << std::endl;
+	shaderBuilder << "	bool depthTestFail = false;" << std::endl;
 	switch(caps.depthTestMethod)
 	{
 	case DEPTH_TEST_ALWAYS:
 		break;
 	case DEPTH_TEST_NEVER:
-		shaderBuilder << "	shouldDiscard = true;" << std::endl;
+		shaderBuilder << "	depthTestFail = true;" << std::endl;
 		break;
 	case DEPTH_TEST_GEQUAL:
 		shaderBuilder << "	uint depthValue = imageLoad(g_depthbuffer, coords).r;" << std::endl;
-		shaderBuilder << "	shouldDiscard = (depth < depthValue);" << std::endl;
+		shaderBuilder << "	depthTestFail = (depth < depthValue);" << std::endl;
 		break;
 	case DEPTH_TEST_GREATER:
 		shaderBuilder << "	uint depthValue = imageLoad(g_depthbuffer, coords).r;" << std::endl;
-		shaderBuilder << "	shouldDiscard = (depth <= depthValue);" << std::endl;
+		shaderBuilder << "	depthTestFail = (depth <= depthValue);" << std::endl;
 		break;
 	}
 
 	//Update depth buffer
 	if(caps.depthWriteEnabled)
 	{
-		shaderBuilder << "	if(!shouldDiscard)" << std::endl;
+		const char* writeCondition = "	if(!depthTestFail)";
+		if(caps.hasAlphaTest && (caps.alphaFailResult == ALPHA_TEST_FAIL_FBONLY))
+		{
+			writeCondition = "	if(!depthTestFail && !alphaTestFail)";
+		}
+		shaderBuilder << writeCondition << std::endl;
 		shaderBuilder << "	{" << std::endl;
 		shaderBuilder << "		imageStore(g_depthbuffer, coords, uvec4(depth & g_depthMask));" << std::endl;
 		shaderBuilder << "	}" << std::endl;
@@ -428,7 +440,7 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 		break;
 	}
 
-	shaderBuilder << "	if(shouldDiscard) discard;" << std::endl;
+	shaderBuilder << "	if(depthTestFail) discard;" << std::endl;
 
 	shaderBuilder << "}" << std::endl;
 
@@ -472,45 +484,42 @@ std::string CGSH_OpenGL::GenerateAlphaTestSection(ALPHA_TEST_METHOD testMethod)
 {
 	std::stringstream shaderBuilder;
 
-	const char* test = "if(false)";
+	const char* test = "	alphaTestFail = false;";
 
 	//testMethod is the condition to pass the test
 	switch(testMethod)
 	{
 	case ALPHA_TEST_NEVER:
-		test = "if(true)";
+		test = "	alphaTestFail = true;";
 		break;
 	case ALPHA_TEST_ALWAYS:
-		test = "if(false)";
+		test = "	alphaTestFail = false;";
 		break;
 	case ALPHA_TEST_LESS:
-		test = "if(textureColorAlphaInt >= g_alphaRef)";
+		test = "	alphaTestFail = (textureColorAlphaInt >= g_alphaRef);";
 		break;
 	case ALPHA_TEST_LEQUAL:
-		test = "if(textureColorAlphaInt > g_alphaRef)";
+		test = "	alphaTestFail = (textureColorAlphaInt > g_alphaRef);";
 		break;
 	case ALPHA_TEST_EQUAL:
-		test = "if(textureColorAlphaInt != g_alphaRef)";
+		test = "	alphaTestFail = (textureColorAlphaInt != g_alphaRef);";
 		break;
 	case ALPHA_TEST_GEQUAL:
-		test = "if(textureColorAlphaInt < g_alphaRef)";
+		test = "	alphaTestFail = (textureColorAlphaInt < g_alphaRef);";
 		break;
 	case ALPHA_TEST_GREATER:
-		test = "if(textureColorAlphaInt <= g_alphaRef)";
+		test = "	alphaTestFail = (textureColorAlphaInt <= g_alphaRef);";
 		break;
 	case ALPHA_TEST_NOTEQUAL:
-		test = "if(textureColorAlphaInt == g_alphaRef)";
+		test = "	alphaTestFail = (textureColorAlphaInt == g_alphaRef);";
 		break;
 	default:
 		assert(false);
 		break;
 	}
 
-	shaderBuilder << "uint textureColorAlphaInt = uint(textureColor.a * 255.0);" << std::endl;
+	shaderBuilder << "	uint textureColorAlphaInt = uint(textureColor.a * 255.0);" << std::endl;
 	shaderBuilder << test << std::endl;
-	shaderBuilder << "{" << std::endl;
-	shaderBuilder << "	discard;" << std::endl;
-	shaderBuilder << "}" << std::endl;
 
 	std::string shaderSource = shaderBuilder.str();
 	return shaderSource;

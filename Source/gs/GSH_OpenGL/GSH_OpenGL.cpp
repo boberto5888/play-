@@ -36,18 +36,6 @@ const unsigned int CGSH_OpenGL::g_shaderClampModes[CGSHandler::CLAMP_MODE_MAX] =
 	TEXTURE_CLAMP_MODE_REGION_CLAMP,
 	TEXTURE_CLAMP_MODE_REGION_REPEAT
 };
-
-const unsigned int CGSH_OpenGL::g_alphaTestInverse[CGSHandler::ALPHA_TEST_MAX] =
-{
-	ALPHA_TEST_ALWAYS,
-	ALPHA_TEST_NEVER,
-	ALPHA_TEST_GEQUAL,
-	ALPHA_TEST_GREATER,
-	ALPHA_TEST_NOTEQUAL,
-	ALPHA_TEST_LESS,
-	ALPHA_TEST_LEQUAL,
-	ALPHA_TEST_EQUAL
-};
 // clang-format on
 
 static uint32 MakeColor(uint8 r, uint8 g, uint8 b, uint8 a)
@@ -641,7 +629,6 @@ void CGSH_OpenGL::SetRenderingContext(uint64 primReg)
 	auto shaderCaps = make_convertible<SHADERCAPS>(0);
 	FillShaderCapsFromTexture(shaderCaps, tex0Reg, tex1Reg, texAReg, clampReg);
 	FillShaderCapsFromTestAndZbuf(shaderCaps, testReg, zbufReg);
-	auto technique = GetTechniqueFromTest(testReg);
 
 	if(prim.nFog)
 	{
@@ -662,13 +649,6 @@ void CGSH_OpenGL::SetRenderingContext(uint64 primReg)
 	{
 		FlushVertexBuffer();
 		m_renderState.shaderCaps = shaderCaps;
-	}
-
-	if(!m_renderState.isValid ||
-	   (m_renderState.technique != technique))
-	{
-		FlushVertexBuffer();
-		m_renderState.technique = technique;
 	}
 
 	//--------------------------------------------------------
@@ -1204,6 +1184,7 @@ void CGSH_OpenGL::FillShaderCapsFromTestAndZbuf(SHADERCAPS& shaderCaps, const ui
 		{
 			shaderCaps.hasAlphaTest = 1;
 			shaderCaps.alphaTestMethod = test.nAlphaMethod;
+			shaderCaps.alphaFailResult = test.nAlphaFail;
 		}
 	}
 	else
@@ -1230,32 +1211,6 @@ void CGSH_OpenGL::FillShaderCapsFromTestAndZbuf(SHADERCAPS& shaderCaps, const ui
 		depthWriteEnabled = false;
 	}
 	shaderCaps.depthWriteEnabled = depthWriteEnabled;
-}
-
-CGSH_OpenGL::TECHNIQUE CGSH_OpenGL::GetTechniqueFromTest(const uint64& testReg)
-{
-	auto test = make_convertible<TEST>(testReg);
-
-	auto technique = TECHNIQUE::STANDARD;
-
-	if(test.nAlphaEnabled)
-	{
-		if((test.nAlphaMethod == ALPHA_TEST_NEVER) && (test.nAlphaFail != ALPHA_TEST_FAIL_KEEP))
-		{
-		}
-		else
-		{
-			if(test.nAlphaFail == ALPHA_TEST_FAIL_FBONLY)
-			{
-				if(m_accurateAlphaTestEnabled)
-				{
-					technique = TECHNIQUE::ALPHATEST_TWOPASS;
-				}
-			}
-		}
-	}
-
-	return technique;
 }
 
 void CGSH_OpenGL::SetupTexture(uint64 primReg, uint64 tex0Reg, uint64 tex1Reg, uint64 texAReg, uint64 clampReg)
@@ -1606,12 +1561,6 @@ void CGSH_OpenGL::Prim_Triangle()
 
 	assert((m_vertexBuffer.size() + 3) <= VERTEX_BUFFER_SIZE);
 	m_vertexBuffer.insert(m_vertexBuffer.end(), std::begin(vertices), std::end(vertices));
-
-	if(m_renderState.technique == TECHNIQUE::ALPHATEST_TWOPASS)
-	{
-		//Two pass alpha test cannot be batched due to overlapping primitives
-		FlushVertexBuffer();
-	}
 }
 
 void CGSH_OpenGL::Prim_Sprite()
@@ -1692,12 +1641,6 @@ void CGSH_OpenGL::Prim_Sprite()
 
 	assert((m_vertexBuffer.size() + 6) <= VERTEX_BUFFER_SIZE);
 	m_vertexBuffer.insert(m_vertexBuffer.end(), std::begin(vertices), std::end(vertices));
-
-	if(m_renderState.technique == TECHNIQUE::ALPHATEST_TWOPASS)
-	{
-		//Two pass alpha test cannot be batched due to overlapping primitives
-		FlushVertexBuffer();
-	}
 }
 
 void CGSH_OpenGL::FlushVertexBuffer()
@@ -1706,47 +1649,14 @@ void CGSH_OpenGL::FlushVertexBuffer()
 
 	assert(m_renderState.isValid == true);
 
-	if(m_renderState.technique == TECHNIQUE::STANDARD)
+	auto shader = GetShaderFromCaps(m_renderState.shaderCaps);
+	if(*shader != m_renderState.shaderHandle)
 	{
-		auto shader = GetShaderFromCaps(m_renderState.shaderCaps);
-		if(*shader != m_renderState.shaderHandle)
-		{
-			m_renderState.shaderHandle = *shader;
-			m_validGlState &= ~GLSTATE_PROGRAM;
-		}
-		DoRenderPass();
+		m_renderState.shaderHandle = *shader;
+		m_validGlState &= ~GLSTATE_PROGRAM;
 	}
-	else if(m_renderState.technique == TECHNIQUE::ALPHATEST_TWOPASS)
-	{
-		//TODO: Support channels other than depth
-		//No point getting here if depth write has been disabled (very flimsy test here)
-		assert(m_renderState.depthMask == true);
-		assert(m_renderState.shaderCaps.hasAlphaTest == true);
+	DoRenderPass();
 
-		//First pass - Draw normally
-		{
-			auto shader = GetShaderFromCaps(m_renderState.shaderCaps);
-			m_renderState.shaderHandle = *shader;
-			m_validGlState &= ~GLSTATE_PROGRAM;
-			DoRenderPass();
-		}
-
-		auto alphaTestMethodSave = m_renderState.shaderCaps.alphaTestMethod;
-
-		//Second pass - Draw with alpha test inverted, disabling writes for channels test preserves if it fails.
-		{
-			m_renderState.shaderCaps.alphaTestMethod = g_alphaTestInverse[m_renderState.shaderCaps.alphaTestMethod];
-			auto shader = GetShaderFromCaps(m_renderState.shaderCaps);
-			m_renderState.shaderHandle = *shader;
-			m_renderState.depthMask = false;
-			m_validGlState &= ~(GLSTATE_PROGRAM | GLSTATE_DEPTHMASK);
-			DoRenderPass();
-		}
-
-		m_renderState.depthMask = true;
-		m_renderState.shaderCaps.alphaTestMethod = alphaTestMethodSave;
-		m_validGlState &= ~GLSTATE_DEPTHMASK;
-	}
 	m_vertexBuffer.clear();
 }
 
