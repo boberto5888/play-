@@ -446,6 +446,11 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 		shaderBuilder << "		fragColor.xyz = ((colorA - colorB) * alphaC * 2) + colorD;" << std::endl;
 	}
 
+	if(caps.hasAlphaTest && (caps.alphaFailResult == ALPHA_TEST_FAIL_RGBONLY))
+	{
+		shaderBuilder << "		if(alphaTestFail) fragColor.a = dstColor.a;" << std::endl;
+	}
+
 	shaderBuilder << "		if((g_colorMask & 0xFF000000) == 0) fragColor.a = dstColor.a;" << std::endl;
 	shaderBuilder << "		if((g_colorMask & 0x00FF0000) == 0) fragColor.b = dstColor.b;" << std::endl;
 	shaderBuilder << "		if((g_colorMask & 0x0000FF00) == 0) fragColor.g = dstColor.g;" << std::endl;
