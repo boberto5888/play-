@@ -45,6 +45,8 @@ public:
 	void BootElf(boost::filesystem::path);
 	void BootCDROM();
 	void LoadCDROM(boost::filesystem::path filePath);
+	void loadState(int);
+
 #ifdef DEBUGGER_INCLUDED
 	void ShowDebugger();
 	void ShowFrameDebugger();
@@ -83,7 +85,6 @@ private:
 	void UpdateUI();
 	void RegisterPreferences();
 	void saveState(int);
-	void loadState(int);
 	void toggleFullscreen();
 #ifdef DEBUGGER_INCLUDED
 	bool nativeEventFilter(const QByteArray&, void*, long*) Q_DECL_OVERRIDE;
