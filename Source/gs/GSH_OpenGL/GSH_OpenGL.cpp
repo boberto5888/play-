@@ -7,6 +7,8 @@
 #include "../GsPixelFormats.h"
 #include "GSH_OpenGL.h"
 
+#define MEMORY_TEXTURE_SIZE 1024
+
 #ifdef GLES_COMPATIBILITY
 //Standard blending constants
 #define BLEND_SRC_ALPHA GL_SRC_ALPHA
@@ -92,6 +94,9 @@ void CGSH_OpenGL::ReleaseImpl()
 	m_primVertexArray.Reset();
 	m_vertexParamsBuffer.Reset();
 	m_fragmentParamsBuffer.Reset();
+	m_xferProgram.reset();
+	m_xferBuffer.Reset();
+	m_xferParamsBuffer.Reset();
 }
 
 void CGSH_OpenGL::ResetImpl()
@@ -151,7 +156,7 @@ void CGSH_OpenGL::FlipImpl()
 			break;
 		}
 	}
-
+	
 	if(!framebuffer && (fb.GetBufWidth() != 0))
 	{
 		framebuffer = FramebufferPtr(new CFramebuffer(fb.GetBufPtr(), fb.GetBufWidth(), FRAMEBUFFER_HEIGHT, fb.nPSM, m_fbScale, m_multisampleEnabled));
@@ -242,11 +247,16 @@ void CGSH_OpenGL::FlipImpl()
 
 		glUseProgram(*m_presentProgram);
 
-		assert(m_presentTextureUniform != -1);
-		glUniform1i(m_presentTextureUniform, 0);
+		//assert(m_presentTextureUniform != -1);
+		//glUniform1i(m_presentTextureUniform, 0);
+
+		glBindImageTexture(0, m_memoryTexture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32UI);
 
 		assert(m_presentTexCoordScaleUniform != -1);
-		glUniform2f(m_presentTexCoordScaleUniform, u1, v1);
+		glUniform2f(m_presentTexCoordScaleUniform, 1, 1);
+
+		glUniform1ui(m_presentFrameBufPtr, fb.GetBufPtr());
+		glUniform1ui(m_presentFrameBufWidth, fb.GetBufWidth());
 
 		glBindBuffer(GL_ARRAY_BUFFER, m_presentVertexBuffer);
 		glBindVertexArray(m_presentVertexArray);
@@ -313,7 +323,8 @@ void CGSH_OpenGL::NotifyPreferencesChangedImpl()
 
 void CGSH_OpenGL::LoadPreferences()
 {
-	m_fbScale = CAppConfig::GetInstance().GetPreferenceInteger(PREF_CGSH_OPENGL_RESOLUTION_FACTOR);
+	//m_fbScale = CAppConfig::GetInstance().GetPreferenceInteger(PREF_CGSH_OPENGL_RESOLUTION_FACTOR);
+	m_fbScale = 1;
 	m_forceBilinearTextures = CAppConfig::GetInstance().GetPreferenceBoolean(PREF_CGSH_OPENGL_FORCEBILINEARTEXTURES);
 }
 
@@ -330,6 +341,8 @@ void CGSH_OpenGL::InitializeRC()
 	m_presentVertexArray = GeneratePresentVertexArray();
 	m_presentTextureUniform = glGetUniformLocation(*m_presentProgram, "g_texture");
 	m_presentTexCoordScaleUniform = glGetUniformLocation(*m_presentProgram, "g_texCoordScale");
+	m_presentFrameBufPtr = glGetUniformLocation(*m_presentProgram, "g_frameBufPtr");
+	m_presentFrameBufWidth = glGetUniformLocation(*m_presentProgram, "g_frameBufWidth");
 
 	m_copyToFbProgram = GenerateCopyToFbProgram();
 	m_copyToFbTexture = Framework::OpenGl::CTexture::Create();
@@ -340,6 +353,17 @@ void CGSH_OpenGL::InitializeRC()
 
 	m_primBuffer = Framework::OpenGl::CBuffer::Create();
 	m_primVertexArray = GeneratePrimVertexArray();
+
+	//Xfer
+	m_xferProgram = GenerateXferProgram();
+	m_xferParamsBuffer = GenerateUniformBlockBuffer(sizeof(XFERPARAMS));
+
+	m_memoryTexture = Framework::OpenGl::CTexture::Create();
+	glBindTexture(GL_TEXTURE_2D, m_memoryTexture);
+	glTexStorage2D(GL_TEXTURE_2D, 1, GL_R32UI, MEMORY_TEXTURE_SIZE, MEMORY_TEXTURE_SIZE);
+	CHECKGLERROR();
+
+	m_xferBuffer = Framework::OpenGl::CBuffer::Create();
 
 	m_vertexParamsBuffer = GenerateUniformBlockBuffer(sizeof(VERTEXPARAMS));
 	m_fragmentParamsBuffer = GenerateUniformBlockBuffer(sizeof(FRAGMENTPARAMS));
@@ -1019,7 +1043,10 @@ void CGSH_OpenGL::SetupFramebuffer(uint64 frameReg, uint64 zbufReg, uint64 sciss
 	m_renderState.colorMaskA = a;
 	m_validGlState &= ~GLSTATE_COLORMASK;
 
+	assert(frame.nPsm == 0);
 	m_fragmentParams.colorMask = ~frame.nMask;
+	m_fragmentParams.frameBufPtr = frame.GetBasePtr();
+	m_fragmentParams.frameBufWidth = frame.GetWidth();
 	m_validGlState &= ~GLSTATE_FRAGMENT_PARAMS;
 
 	//Check if we're drawing into a buffer that's been used for depth before
@@ -1360,6 +1387,8 @@ void CGSH_OpenGL::SetupTexture(uint64 primReg, uint64 tex0Reg, uint64 tex1Reg, u
 	m_fragmentParams.clampMax[1] = static_cast<float>(clampMax[1]);
 	m_fragmentParams.texA0 = static_cast<float>(texA.nTA0) / 255.f;
 	m_fragmentParams.texA1 = static_cast<float>(texA.nTA1) / 255.f;
+	m_fragmentParams.textureBufPtr = tex0.GetBufPtr();
+	m_fragmentParams.textureBufWidth = tex0.GetBufWidth();
 	m_validGlState &= ~GLSTATE_FRAGMENT_PARAMS;
 }
 
@@ -1743,6 +1772,9 @@ void CGSH_OpenGL::DoRenderPass()
 
 	if((m_validGlState & GLSTATE_TEXTURE) == 0)
 	{
+		glBindImageTexture(0, m_memoryTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32UI);
+		CHECKGLERROR();
+
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, m_renderState.texture0Handle);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, m_renderState.texture0MinFilter);
@@ -1764,8 +1796,6 @@ void CGSH_OpenGL::DoRenderPass()
 	if((m_validGlState & GLSTATE_FRAMEBUFFER) == 0)
 	{
 		glBindFramebuffer(GL_FRAMEBUFFER, m_renderState.framebufferHandle);
-		glBindImageTexture(0, m_renderState.framebufferTextureHandle, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA8);
-		glBindImageTexture(1, m_renderState.depthbufferTextureHandle, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32UI);
 		CHECKGLERROR();
 		m_validGlState |= GLSTATE_FRAMEBUFFER;
 	}
@@ -2026,10 +2056,68 @@ void CGSH_OpenGL::VertexKick(uint8 nRegister, uint64 nValue)
 void CGSH_OpenGL::ProcessHostToLocalTransfer()
 {
 	auto bltBuf = make_convertible<BITBLTBUF>(m_nReg[GS_REG_BITBLTBUF]);
+	auto trxReg = make_convertible<TRXREG>(m_nReg[GS_REG_TRXREG]);
+	auto trxPos = make_convertible<TRXPOS>(m_nReg[GS_REG_TRXPOS]);
+
 	uint32 transferAddress = bltBuf.GetDstPtr();
 
-	if(m_trxCtx.nDirty)
+	//if(m_trxCtx.nDirty)
 	{
+		///////
+
+		//Update trx buffer
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_xferBuffer);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, m_trxCtx.offset, m_trxBuffer.data(), GL_STREAM_DRAW);
+		CHECKGLERROR();
+
+		XFERPARAMS xferParams;
+		xferParams.bufAddress = bltBuf.GetDstPtr();
+		xferParams.bufWidth = bltBuf.GetDstWidth();
+		xferParams.rrw = trxReg.nRRW;
+		xferParams.dsax = trxPos.nDSAX;
+		xferParams.dsay = trxPos.nDSAY;
+
+		glBindBuffer(GL_UNIFORM_BUFFER, m_xferParamsBuffer);
+		glBufferData(GL_UNIFORM_BUFFER, sizeof(XFERPARAMS), &xferParams, GL_STREAM_DRAW);
+		CHECKGLERROR();
+
+		//Setup compute dispatch
+		glUseProgram(*m_xferProgram);
+
+		glBindBufferBase(GL_UNIFORM_BUFFER, 0, m_xferParamsBuffer);
+		CHECKGLERROR();
+
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, m_xferBuffer);
+		CHECKGLERROR();
+
+		glBindImageTexture(0, m_memoryTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32UI);
+		CHECKGLERROR();
+
+#ifdef _DEBUG
+		m_xferProgram->Validate();
+#endif
+
+		uint32 blockCount = m_trxCtx.offset / 4;
+		uint32 workUnits = blockCount / 128;
+
+		glDispatchCompute(workUnits, 1, 1);
+		CHECKGLERROR();
+
+#if 0
+		glMemoryBarrier(GL_TEXTURE_UPDATE_BARRIER_BIT);
+		CHECKGLERROR();
+
+		glBindTexture(GL_TEXTURE_2D, m_memoryTexture);
+		std::vector<uint32> data;
+		data.resize(MEMORY_TEXTURE_SIZE * MEMORY_TEXTURE_SIZE);
+		glGetTexImage(GL_TEXTURE_2D, 0, GL_RED_INTEGER, GL_UNSIGNED_INT, data.data());
+		CHECKGLERROR();
+
+		uint8* dataBlah = reinterpret_cast<uint8*>(data.data());
+#endif
+
+		///////
+
 		FlushVertexBuffer();
 		m_renderState.isTextureStateValid = false;
 		m_renderState.isFramebufferStateValid = false;

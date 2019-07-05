@@ -898,6 +898,7 @@ protected:
 		uint32 nRealSize;
 		uint32 nRRX;
 		uint32 nRRY;
+		uint32 offset;
 		bool nDirty;
 	};
 
@@ -965,6 +966,7 @@ protected:
 	PRESENTATION_PARAMS m_presentationParams;
 
 	TRXCONTEXT m_trxCtx;
+	std::vector<uint8> m_trxBuffer;
 
 	uint64 m_nReg[REGISTER_MAX];
 

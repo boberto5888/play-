@@ -78,6 +78,7 @@ CGSHandler::CGSHandler()
 
 	m_pRAM = new uint8[RAMSIZE];
 	m_pCLUT = new uint16[CLUTENTRYCOUNT];
+	m_trxBuffer.resize(RAMSIZE);
 
 	for(int i = 0; i < PSM_MAX; i++)
 	{
@@ -578,8 +579,10 @@ void CGSHandler::FeedImageDataImpl(const uint8* imageData, uint32 length)
 
 		auto bltBuf = make_convertible<BITBLTBUF>(m_nReg[GS_REG_BITBLTBUF]);
 
-		m_trxCtx.nDirty |= ((this)->*(m_transferWriteHandlers[bltBuf.nDstPsm]))(imageData, length);
+		//m_trxCtx.nDirty |= ((this)->*(m_transferWriteHandlers[bltBuf.nDstPsm]))(imageData, length);
 
+		memcpy(m_trxBuffer.data() + m_trxCtx.offset, imageData, length);
+		m_trxCtx.offset += length;
 		m_trxCtx.nSize -= length;
 
 		if(m_trxCtx.nSize == 0)
@@ -675,6 +678,7 @@ void CGSHandler::BeginTransfer()
 		m_trxCtx.nRRX = 0;
 		m_trxCtx.nRRY = 0;
 		m_trxCtx.nDirty = false;
+		m_trxCtx.offset = 0;
 
 		if(trxDir == 0)
 		{

@@ -149,9 +149,25 @@ private:
 		uint32 alphaFix;
 		//
 		uint32 colorMask;
-		float padding2[3];
+		uint32 textureBufPtr;
+		uint32 textureBufWidth;
+		uint32 frameBufPtr;
+		//
+		uint32 frameBufWidth;
+		uint32 padding[3];
 	};
-	static_assert(sizeof(FRAGMENTPARAMS) == 0x50, "Size of FRAGMENTPARAMS must be 64 bytes.");
+	static_assert(sizeof(FRAGMENTPARAMS) == 0x60, "Size of FRAGMENTPARAMS must be 96 bytes.");
+
+	struct XFERPARAMS
+	{
+		uint32 bufAddress;
+		uint32 bufWidth;
+		uint32 rrw;
+		uint32 dsax;
+		uint32 dsay;
+		uint32 padding[3];
+	};
+	static_assert(sizeof(XFERPARAMS) == 0x20, "Size of FRAGMENTPARAMS must be 32 bytes.");
 
 	enum
 	{
@@ -312,6 +328,7 @@ private:
 	std::string GenerateAlphaBlendABDValue(ALPHABLEND_ABD);
 	std::string GenerateAlphaBlendCValue(ALPHABLEND_C);
 	std::string GenerateAlphaTestSection(ALPHA_TEST_METHOD);
+	std::string GenerateMemoryAccessSection();
 
 	Framework::OpenGl::ProgramPtr GeneratePresentProgram();
 	Framework::OpenGl::CBuffer GeneratePresentVertexBuffer();
@@ -320,6 +337,8 @@ private:
 	Framework::OpenGl::ProgramPtr GenerateCopyToFbProgram();
 	Framework::OpenGl::CBuffer GenerateCopyToFbVertexBuffer();
 	Framework::OpenGl::CVertexArray GenerateCopyToFbVertexArray();
+
+	Framework::OpenGl::ProgramPtr GenerateXferProgram();
 
 	Framework::OpenGl::CVertexArray GeneratePrimVertexArray();
 	Framework::OpenGl::CBuffer GenerateUniformBlockBuffer(size_t);
@@ -395,6 +414,8 @@ private:
 	Framework::OpenGl::CVertexArray m_presentVertexArray;
 	GLint m_presentTextureUniform = -1;
 	GLint m_presentTexCoordScaleUniform = -1;
+	GLint m_presentFrameBufPtr = -1;
+	GLint m_presentFrameBufWidth = -1;
 
 	Framework::OpenGl::ProgramPtr m_copyToFbProgram;
 	Framework::OpenGl::CTexture m_copyToFbTexture;
@@ -410,6 +431,11 @@ private:
 
 	Framework::OpenGl::CBuffer m_primBuffer;
 	Framework::OpenGl::CVertexArray m_primVertexArray;
+
+	Framework::OpenGl::ProgramPtr m_xferProgram;
+	Framework::OpenGl::CBuffer m_xferParamsBuffer;
+	Framework::OpenGl::CBuffer m_xferBuffer;
+	Framework::OpenGl::CTexture m_memoryTexture;
 
 	VERTEX m_VtxBuffer[3];
 	int m_nVtxCount;

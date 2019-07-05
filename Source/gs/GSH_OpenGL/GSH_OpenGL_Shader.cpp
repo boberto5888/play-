@@ -5,8 +5,7 @@
 #ifdef GLES_COMPATIBILITY
 #define GLSL_VERSION "#version 300 es"
 #else
-//#define GLSL_VERSION "#version 150"
-#define GLSL_VERSION "#version 420"
+#define GLSL_VERSION "#version 430"
 #endif
 
 enum FRAGMENT_SHADER_ORDERING_MODE
@@ -181,11 +180,10 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 
 	shaderBuilder << "out vec4 fragColor;" << std::endl;
 
+	shaderBuilder << GenerateMemoryAccessSection() << std::endl;
+
 	shaderBuilder << "uniform sampler2D g_texture;" << std::endl;
 	shaderBuilder << "uniform sampler2D g_palette;" << std::endl;
-
-	shaderBuilder << "uniform layout(rgba8) image2D g_framebuffer;" << std::endl;
-	shaderBuilder << "uniform layout(r32ui) uimage2D g_depthbuffer;" << std::endl;
 
 	shaderBuilder << "layout(std140) uniform FragmentParams" << std::endl;
 	shaderBuilder << "{" << std::endl;
@@ -200,6 +198,10 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 	shaderBuilder << "	vec3 g_fogColor;" << std::endl;
 	shaderBuilder << "	uint g_alphaFix;" << std::endl;
 	shaderBuilder << "	uint g_colorMask;" << std::endl;
+	shaderBuilder << "	uint g_textureBufPtr;" << std::endl;
+	shaderBuilder << "	uint g_textureBufWidth;" << std::endl;
+	shaderBuilder << "	uint g_frameBufPtr;" << std::endl;
+	shaderBuilder << "	uint g_frameBufWidth;" << std::endl;
 	shaderBuilder << "};" << std::endl;
 
 	if(caps.texClampS == TEXTURE_CLAMP_MODE_REGION_REPEAT || caps.texClampT == TEXTURE_CLAMP_MODE_REGION_REPEAT)
@@ -302,7 +304,11 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 	}
 	else if(caps.texSourceMode == TEXTURE_SOURCE_MODE_STD)
 	{
-		shaderBuilder << "	textureColor = expandAlpha(texture(g_texture, texCoord.st));" << std::endl;
+		shaderBuilder << "	uvec2 imageCoord = uvec2(texCoord.st * g_textureSize.st);" << std::endl;
+		shaderBuilder << "	uint address = g_textureBufPtr + (imageCoord.y * g_textureBufWidth * 4) + (imageCoord.x * 4);" << std::endl;
+		shaderBuilder << "	uint pixel = Memory_GetWord(address);" << std::endl;
+		shaderBuilder << "	textureColor = PSM32ToVec4(pixel);" << std::endl;
+		//shaderBuilder << "	textureColor = expandAlpha(texture(g_texture, texCoord.st));" << std::endl;
 	}
 
 	if(caps.texSourceMode != TEXTURE_SOURCE_MODE_NONE)
@@ -392,8 +398,11 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 		break;
 	}
 
-	shaderBuilder << "	ivec2 coords = ivec2(gl_FragCoord.xy);" << std::endl;
+	shaderBuilder << "	ivec2 pixelPosition = ivec2(gl_FragCoord.xy);" << std::endl;
+	shaderBuilder << "	const uint c_texelSize = 4;" << std::endl;
+	shaderBuilder << "	uint frameAddress = g_frameBufPtr + (pixelPosition.y * g_frameBufWidth * c_texelSize) + (pixelPosition.x * c_texelSize);" << std::endl;
 
+#if 0
 	//Depth test
 	switch(caps.depthTestMethod)
 	{
@@ -425,6 +434,7 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 		shaderBuilder << "		imageStore(g_depthbuffer, coords, uvec4(depth & g_depthMask));" << std::endl;
 		shaderBuilder << "	}" << std::endl;
 	}
+#endif
 
 	const char* colorWriteCondition = "	if(!depthTestFail)";
 	if(caps.hasAlphaTest && (caps.alphaFailResult == ALPHA_TEST_FAIL_ZBONLY))
@@ -435,7 +445,8 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 	shaderBuilder << colorWriteCondition << std::endl;
 	shaderBuilder << "	{" << std::endl;
 
-	shaderBuilder << "		vec4 dstColor = imageLoad(g_framebuffer, coords);" << std::endl;
+	shaderBuilder << "		uint dstPixel = Memory_GetWord(frameAddress);" << std::endl;
+	shaderBuilder << "		vec4 dstColor = PSM32ToVec4(dstPixel);" << std::endl;
 
 	if(caps.hasAlphaBlend)
 	{
@@ -456,7 +467,9 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 	shaderBuilder << "		if((g_colorMask & 0x0000FF00) == 0) fragColor.g = dstColor.g;" << std::endl;
 	shaderBuilder << "		if((g_colorMask & 0x000000FF) == 0) fragColor.r = dstColor.r;" << std::endl;
 
-	shaderBuilder << "		imageStore(g_framebuffer, coords, fragColor);" << std::endl;
+	shaderBuilder << "		uint pixel = uint(fragColor.r * 255.0) << 0 | uint(fragColor.g * 255.0) << 8 | uint(fragColor.b * 255.0) << 16 | uint(fragColor.a * 255.0) << 24;" << std::endl;
+	shaderBuilder << "		Memory_SetWord(frameAddress, pixel);" << std::endl;
+
 	shaderBuilder << "	}" << std::endl;
 
 	switch(orderingMode)
@@ -591,6 +604,41 @@ std::string CGSH_OpenGL::GenerateAlphaTestSection(ALPHA_TEST_METHOD testMethod)
 	return shaderSource;
 }
 
+std::string CGSH_OpenGL::GenerateMemoryAccessSection()
+{
+	std::stringstream shaderBuilder;
+
+	shaderBuilder << "layout(binding = 0, r32ui) uniform uimage2D g_memory;" << std::endl;
+	shaderBuilder << "const uint c_memorySize = 1024;" << std::endl;
+
+	shaderBuilder << "void Memory_SetWord(uint address, uint value)" << std::endl;
+	shaderBuilder << "{" << std::endl;
+	shaderBuilder << "	uint wordAddress = address / 4;" << std::endl;
+	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
+	shaderBuilder << "	imageStore(g_memory, coords, uvec4(value));" << std::endl;
+	shaderBuilder << "}" << std::endl;
+
+	shaderBuilder << "uint Memory_GetWord(uint address)" << std::endl;
+	shaderBuilder << "{" << std::endl;
+	shaderBuilder << "	uint wordAddress = address / 4;" << std::endl;
+	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
+	shaderBuilder << "	return imageLoad(g_memory, coords).r;" << std::endl;
+	shaderBuilder << "}" << std::endl;
+
+	shaderBuilder << "vec4 PSM32ToVec4(uint pixel)" << std::endl;
+	shaderBuilder << "{" << std::endl;
+	shaderBuilder << "	vec4 result;" << std::endl;
+	shaderBuilder << "	result.r = float((pixel & 0x000000FF) >> 0) / 255.0;" << std::endl;
+	shaderBuilder << "	result.g = float((pixel & 0x0000FF00) >> 8) / 255.0;" << std::endl;
+	shaderBuilder << "	result.b = float((pixel & 0x00FF0000) >> 16) / 255.0;" << std::endl;
+	shaderBuilder << "	result.a = float((pixel & 0xFF000000) >> 24) / 255.0;" << std::endl;
+	shaderBuilder << "	return result;" << std::endl;
+	shaderBuilder << "}";
+
+	auto shaderSource = shaderBuilder.str();
+	return shaderSource;
+}
+
 Framework::OpenGl::ProgramPtr CGSH_OpenGL::GeneratePresentProgram()
 {
 	Framework::OpenGl::CShader vertexShader(GL_VERTEX_SHADER);
@@ -620,10 +668,17 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GeneratePresentProgram()
 		shaderBuilder << "precision mediump float;" << std::endl;
 		shaderBuilder << "in vec2 v_texCoord;" << std::endl;
 		shaderBuilder << "out vec4 fragColor;" << std::endl;
-		shaderBuilder << "uniform sampler2D g_texture;" << std::endl;
+		shaderBuilder << GenerateMemoryAccessSection() << std::endl;
+//		shaderBuilder << "uniform sampler2D g_texture;" << std::endl;
+		shaderBuilder << "uniform uint g_frameBufPtr;" << std::endl;
+		shaderBuilder << "uniform uint g_frameBufWidth;" << std::endl;
 		shaderBuilder << "void main()" << std::endl;
 		shaderBuilder << "{" << std::endl;
-		shaderBuilder << "	fragColor = texture(g_texture, v_texCoord);" << std::endl;
+		shaderBuilder << "	ivec2 pixelPosition = ivec2(v_texCoord.x * 640.0, v_texCoord.y * 448.0);" << std::endl;
+		shaderBuilder << "	const uint c_texelSize = 4;" << std::endl;
+		shaderBuilder << "	uint frameAddress = g_frameBufPtr + (pixelPosition.y * g_frameBufWidth * c_texelSize) + (pixelPosition.x * c_texelSize);" << std::endl;
+		shaderBuilder << "	uint pixel = Memory_GetWord(frameAddress);" << std::endl;
+		shaderBuilder << "	fragColor = PSM32ToVec4(pixel);" << std::endl;
 		shaderBuilder << "}" << std::endl;
 
 		pixelShader.SetSource(shaderBuilder.str().c_str());
@@ -696,6 +751,63 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateCopyToFbProgram()
 
 		glBindAttribLocation(*program, static_cast<GLuint>(PRIM_VERTEX_ATTRIB::POSITION), "a_position");
 		glBindAttribLocation(*program, static_cast<GLuint>(PRIM_VERTEX_ATTRIB::TEXCOORD), "a_texCoord");
+
+		FRAMEWORK_MAYBE_UNUSED bool result = program->Link();
+		assert(result);
+	}
+
+	return program;
+}
+
+Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgram()
+{
+	Framework::OpenGl::CShader computeShader(GL_COMPUTE_SHADER);
+
+	auto program = std::make_shared<Framework::OpenGl::CProgram>();
+
+	{
+		std::stringstream shaderBuilder;
+		shaderBuilder << "#version 430" << std::endl;
+
+		shaderBuilder << "layout(local_size_x = 128) in;" << std::endl;
+
+		shaderBuilder << "layout(binding = 0, std140) uniform xferParams" << std::endl;
+		shaderBuilder << "{" << std::endl;
+		shaderBuilder << "	uint g_bufAddress;" << std::endl;
+		shaderBuilder << "	uint g_bufWidth;" << std::endl;
+		shaderBuilder << "	uint g_rrw;" << std::endl;
+		shaderBuilder << "	uint g_dsax;" << std::endl;
+		shaderBuilder << "	uint g_dsay;" << std::endl;
+		shaderBuilder << "};" << std::endl;
+
+		shaderBuilder << "layout(binding = 0, std430) buffer xferData" << std::endl;
+		shaderBuilder << "{" << std::endl;
+		shaderBuilder << "	uint g_data[];" << std::endl;
+		shaderBuilder << "};" << std::endl;
+
+		shaderBuilder << GenerateMemoryAccessSection() << std::endl;
+
+		shaderBuilder << "void main()" << std::endl;
+		shaderBuilder << "{" << std::endl;
+		shaderBuilder << "	const uint c_texelSize = 4;" << std::endl;
+		shaderBuilder << "	uint srcOffset = gl_GlobalInvocationID.x;" << std::endl;
+		shaderBuilder << "	uint pixel = g_data[srcOffset];" << std::endl;
+		shaderBuilder << "	uint rrx = srcOffset % g_rrw;" << std::endl;
+		shaderBuilder << "	uint rry = srcOffset / g_rrw;" << std::endl;
+		shaderBuilder << "	uint trxX = (rrx + g_dsax) % 2048;" << std::endl;
+		shaderBuilder << "	uint trxY = (rry + g_dsay) % 2048;" << std::endl;
+		shaderBuilder << "	uint address = g_bufAddress + (trxY * g_bufWidth * c_texelSize) + (trxX * c_texelSize);" << std::endl;
+		shaderBuilder << "	Memory_SetWord(address, pixel);" << std::endl;
+		shaderBuilder << "}" << std::endl;
+
+		auto source = shaderBuilder.str();
+		computeShader.SetSource(source.c_str());
+		FRAMEWORK_MAYBE_UNUSED bool result = computeShader.Compile();
+		assert(result);
+	}
+
+	{
+		program->AttachShader(computeShader);
 
 		FRAMEWORK_MAYBE_UNUSED bool result = program->Link();
 		assert(result);
