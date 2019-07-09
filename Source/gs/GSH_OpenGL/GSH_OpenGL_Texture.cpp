@@ -75,6 +75,7 @@ CGSH_OpenGL::TEXTUREFORMAT_INFO CGSH_OpenGL::GetTextureFormatInfo(uint32 psm)
 CGSH_OpenGL::TEXTURE_INFO CGSH_OpenGL::PrepareTexture(const TEX0& tex0)
 {
 	TEXTURE_INFO texInfo;
+	return texInfo;
 
 	for(const auto& candidateFramebuffer : m_framebuffers)
 	{

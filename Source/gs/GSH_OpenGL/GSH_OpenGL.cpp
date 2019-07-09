@@ -22,6 +22,8 @@
 #define NUM_SAMPLES 8
 #define FRAMEBUFFER_HEIGHT 1024
 
+const uint32 CGSH_OpenGL::g_xferWorkGroupSize = 256;
+
 // clang-format off
 const GLenum CGSH_OpenGL::g_nativeClampModes[CGSHandler::CLAMP_MODE_MAX] =
 {
@@ -94,7 +96,13 @@ void CGSH_OpenGL::ReleaseImpl()
 	m_primVertexArray.Reset();
 	m_vertexParamsBuffer.Reset();
 	m_fragmentParamsBuffer.Reset();
-	m_xferProgram.reset();
+	m_xferProgramPSMCT32.reset();
+	m_xferProgramPSMCT16.reset();
+	m_xferProgramPSMT8.reset();
+	m_xferProgramPSMT4.reset();
+	m_xferProgramPSMT8H.reset();
+	m_xferProgramPSMT4HL.reset();
+	m_xferProgramPSMT4HH.reset();
 	m_xferBuffer.Reset();
 	m_xferParamsBuffer.Reset();
 }
@@ -355,7 +363,13 @@ void CGSH_OpenGL::InitializeRC()
 	m_primVertexArray = GeneratePrimVertexArray();
 
 	//Xfer
-	m_xferProgram = GenerateXferProgram();
+	m_xferProgramPSMCT32 = GenerateXferProgramPSMCT32();
+	m_xferProgramPSMCT16 = GenerateXferProgramPSMCT16();
+	m_xferProgramPSMT8 = GenerateXferProgramPSMT8();
+	m_xferProgramPSMT4 = GenerateXferProgramPSMT4();
+	m_xferProgramPSMT8H = GenerateXferProgramPSMT8H();
+	m_xferProgramPSMT4HL = GenerateXferProgramPSMT4HL();
+	m_xferProgramPSMT4HH = GenerateXferProgramPSMT4HH();
 	m_xferParamsBuffer = GenerateUniformBlockBuffer(sizeof(XFERPARAMS));
 
 	m_memoryTexture = Framework::OpenGl::CTexture::Create();
@@ -652,6 +666,7 @@ void CGSH_OpenGL::SetRenderingContext(uint64 primReg)
 
 	auto shaderCaps = make_convertible<SHADERCAPS>(0);
 	FillShaderCapsFromTexture(shaderCaps, tex0Reg, tex1Reg, texAReg, clampReg);
+	FillShaderCapsFromFrame(shaderCaps, frameReg);
 	FillShaderCapsFromTestAndZbuf(shaderCaps, testReg, zbufReg);
 	shaderCaps.hasAlphaBlend = prim.nAlpha;
 	FillShaderCapsFromAlpha(shaderCaps, alphaReg);
@@ -1043,7 +1058,6 @@ void CGSH_OpenGL::SetupFramebuffer(uint64 frameReg, uint64 zbufReg, uint64 sciss
 	m_renderState.colorMaskA = a;
 	m_validGlState &= ~GLSTATE_COLORMASK;
 
-	assert(frame.nPsm == 0);
 	m_fragmentParams.colorMask = ~frame.nMask;
 	m_fragmentParams.frameBufPtr = frame.GetBasePtr();
 	m_fragmentParams.frameBufWidth = frame.GetWidth();
@@ -1198,8 +1212,15 @@ void CGSH_OpenGL::FillShaderCapsFromTexture(SHADERCAPS& shaderCaps, const uint64
 	{
 		shaderCaps.texBlackIsTransparent = 1;
 	}
-
+	
 	shaderCaps.texFunction = tex0.nFunction;
+	shaderCaps.texPsm = tex0.nPsm;
+}
+
+void CGSH_OpenGL::FillShaderCapsFromFrame(SHADERCAPS& shaderCaps, const uint64& frameReg)
+{
+	auto frame = make_convertible<FRAME>(frameReg);
+	shaderCaps.framePsm = frame.nPsm;
 }
 
 void CGSH_OpenGL::FillShaderCapsFromTestAndZbuf(SHADERCAPS& shaderCaps, const uint64& testReg, const uint64& zbufReg)
@@ -1377,6 +1398,7 @@ void CGSH_OpenGL::SetupTexture(uint64 primReg, uint64 tex0Reg, uint64 tex1Reg, u
 	m_vertexParams.texMatrix[3 + (3 * 4)] = 1;
 	m_validGlState &= ~GLSTATE_VERTEX_PARAMS;
 
+	//assert(tex0.nPsm == PSMCT32);
 	m_fragmentParams.textureSize[0] = static_cast<float>(tex0.GetWidth());
 	m_fragmentParams.textureSize[1] = static_cast<float>(tex0.GetHeight());
 	m_fragmentParams.texelSize[0] = 1.0f / static_cast<float>(tex0.GetWidth());
@@ -1846,7 +1868,7 @@ void CGSH_OpenGL::DrawToDepth(unsigned int primitiveType, uint64 primReg)
 	//Must be a sprite
 	if(primitiveType != PRIM_SPRITE) return;
 
-	assert(false);
+	//assert(false);
 #if 0
 	//Invalidate state
 	FlushVertexBuffer();
@@ -2063,6 +2085,46 @@ void CGSH_OpenGL::ProcessHostToLocalTransfer()
 
 	//if(m_trxCtx.nDirty)
 	{
+		uint32 pixelCount = 0;
+		Framework::OpenGl::ProgramPtr xferProgram;
+
+		switch(bltBuf.nDstPsm)
+		{
+		case PSMCT32:
+			pixelCount = m_trxCtx.offset / 4;
+			xferProgram = m_xferProgramPSMCT32;
+			break;
+		case PSMCT16:
+			pixelCount = m_trxCtx.offset / 2;
+			xferProgram = m_xferProgramPSMCT16;
+			break;
+		case PSMT8:
+			pixelCount = m_trxCtx.offset;
+			xferProgram = m_xferProgramPSMT8;
+			break;
+		case PSMT4:
+			pixelCount = m_trxCtx.offset * 2;
+			xferProgram = m_xferProgramPSMT4;
+			break;
+		case PSMT8H:
+			pixelCount = m_trxCtx.offset;
+			xferProgram = m_xferProgramPSMT8H;
+			break;
+		case PSMT4HL:
+			pixelCount = m_trxCtx.offset * 2;
+			xferProgram = m_xferProgramPSMT4HL;
+			break;
+		case PSMT4HH:
+			pixelCount = m_trxCtx.offset * 2;
+			xferProgram = m_xferProgramPSMT4HH;
+			break;
+		default:
+			assert(false);
+			break;
+		}
+
+		uint32 workUnits = pixelCount / g_xferWorkGroupSize;
+
 		///////
 
 		//Update trx buffer
@@ -2082,7 +2144,7 @@ void CGSH_OpenGL::ProcessHostToLocalTransfer()
 		CHECKGLERROR();
 
 		//Setup compute dispatch
-		glUseProgram(*m_xferProgram);
+		glUseProgram(*xferProgram);
 
 		glBindBufferBase(GL_UNIFORM_BUFFER, 0, m_xferParamsBuffer);
 		CHECKGLERROR();
@@ -2094,11 +2156,8 @@ void CGSH_OpenGL::ProcessHostToLocalTransfer()
 		CHECKGLERROR();
 
 #ifdef _DEBUG
-		m_xferProgram->Validate();
+		xferProgram->Validate();
 #endif
-
-		uint32 blockCount = m_trxCtx.offset / 4;
-		uint32 workUnits = blockCount / 128;
 
 		glDispatchCompute(workUnits, 1, 1);
 		CHECKGLERROR();
@@ -2117,7 +2176,7 @@ void CGSH_OpenGL::ProcessHostToLocalTransfer()
 #endif
 
 		///////
-
+#if 0
 		FlushVertexBuffer();
 		m_renderState.isTextureStateValid = false;
 		m_renderState.isFramebufferStateValid = false;
@@ -2143,6 +2202,7 @@ void CGSH_OpenGL::ProcessHostToLocalTransfer()
 			if((framebuffer->m_psm == PSMCT24) && isUpperByteTransfer) continue;
 			framebuffer->m_cachedArea.Invalidate(transferAddress + transferOffset, transferSize);
 		}
+#endif
 	}
 }
 
@@ -2335,6 +2395,8 @@ CGSH_OpenGL::CFramebuffer::~CFramebuffer()
 
 void CGSH_OpenGL::PopulateFramebuffer(const FramebufferPtr& framebuffer)
 {
+	return;
+
 	auto texFormat = GetTextureFormatInfo(framebuffer->m_psm);
 
 	glActiveTexture(GL_TEXTURE0);
@@ -2362,6 +2424,8 @@ void CGSH_OpenGL::PopulateFramebuffer(const FramebufferPtr& framebuffer)
 
 void CGSH_OpenGL::CommitFramebufferDirtyPages(const FramebufferPtr& framebuffer, unsigned int minY, unsigned int maxY)
 {
+	return;
+
 	class CCopyToFbEnabler
 	{
 	public:

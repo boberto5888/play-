@@ -256,6 +256,7 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 	}
 
 	shaderBuilder << "	vec4 textureColor = vec4(1, 1, 1, 1);" << std::endl;
+#if 0
 	if(caps.isIndexedTextureSource())
 	{
 		if(!caps.texBilinearFilter)
@@ -303,12 +304,45 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 		}
 	}
 	else if(caps.texSourceMode == TEXTURE_SOURCE_MODE_STD)
+#endif
+	//if(caps.texSourceMode != TEXTURE_SOURCE_MODE_NONE)
+	if(caps.texSourceMode != TEXTURE_SOURCE_MODE_NONE)
 	{
 		shaderBuilder << "	uvec2 imageCoord = uvec2(texCoord.st * g_textureSize.st);" << std::endl;
-		shaderBuilder << "	uint address = g_textureBufPtr + (imageCoord.y * g_textureBufWidth * 4) + (imageCoord.x * 4);" << std::endl;
-		shaderBuilder << "	uint pixel = Memory_GetWord(address);" << std::endl;
-		shaderBuilder << "	textureColor = PSM32ToVec4(pixel);" << std::endl;
-		//shaderBuilder << "	textureColor = expandAlpha(texture(g_texture, texCoord.st));" << std::endl;
+		if(caps.texPsm == PSMCT32)
+		{
+			shaderBuilder << "	const uint c_texTexelSize = 4;" << std::endl;
+			shaderBuilder << "	uint address = g_textureBufPtr + (imageCoord.y * g_textureBufWidth * c_texTexelSize) + (imageCoord.x * c_texTexelSize);" << std::endl;
+			shaderBuilder << "	uint pixel = Memory_Read32(address);" << std::endl;
+			shaderBuilder << "	textureColor = PSM32ToVec4(pixel);" << std::endl;
+		}
+		else if(caps.texPsm == PSMCT16 || caps.texPsm == PSMCT16S)
+		{
+			shaderBuilder << "	const uint c_texTexelSize = 2;" << std::endl;
+			shaderBuilder << "	uint address = g_textureBufPtr + (imageCoord.y * g_textureBufWidth * c_texTexelSize) + (imageCoord.x * c_texTexelSize);" << std::endl;
+			shaderBuilder << "	uint pixel = Memory_Read16(address);" << std::endl;
+			shaderBuilder << "	textureColor = PSM16ToVec4(pixel);" << std::endl;
+		}
+		else if(caps.texPsm == PSMT8)
+		{
+			shaderBuilder << "	const uint c_texTexelSize = 1;" << std::endl;
+			shaderBuilder << "	uint address = g_textureBufPtr + (imageCoord.y * g_textureBufWidth * c_texTexelSize) + (imageCoord.x * c_texTexelSize);" << std::endl;
+			shaderBuilder << "	uint pixel = Memory_Read8(address);" << std::endl;
+			shaderBuilder << "	textureColor.rgb = vec3(float(pixel) / 255.0);" << std::endl;
+			shaderBuilder << "	textureColor.a = 1.0;" << std::endl;
+		}
+		else if(caps.texPsm == PSMT4)
+		{
+			shaderBuilder << "	const uint c_texTexelSize = 1;" << std::endl;
+			shaderBuilder << "	uint address = g_textureBufPtr + (imageCoord.y * g_textureBufWidth * c_texTexelSize) + (imageCoord.x * c_texTexelSize);" << std::endl;
+			shaderBuilder << "	uint pixel = Memory_Read4(address, 0);" << std::endl;
+			shaderBuilder << "	textureColor.rgb = vec3(float(pixel) / 15.0);" << std::endl;
+			shaderBuilder << "	textureColor.a = 1.0;" << std::endl;
+		}
+		else
+		{
+			assert(false);
+		}
 	}
 
 	if(caps.texSourceMode != TEXTURE_SOURCE_MODE_NONE)
@@ -399,8 +433,6 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 	}
 
 	shaderBuilder << "	ivec2 pixelPosition = ivec2(gl_FragCoord.xy);" << std::endl;
-	shaderBuilder << "	const uint c_texelSize = 4;" << std::endl;
-	shaderBuilder << "	uint frameAddress = g_frameBufPtr + (pixelPosition.y * g_frameBufWidth * c_texelSize) + (pixelPosition.x * c_texelSize);" << std::endl;
 
 #if 0
 	//Depth test
@@ -445,8 +477,24 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 	shaderBuilder << colorWriteCondition << std::endl;
 	shaderBuilder << "	{" << std::endl;
 
-	shaderBuilder << "		uint dstPixel = Memory_GetWord(frameAddress);" << std::endl;
-	shaderBuilder << "		vec4 dstColor = PSM32ToVec4(dstPixel);" << std::endl;
+	if((caps.framePsm == PSMCT32) || (caps.framePsm == PSMCT24))
+	{
+		shaderBuilder << "		const uint c_frameTexelSize = 4;" << std::endl;
+		shaderBuilder << "		uint frameAddress = g_frameBufPtr + (pixelPosition.y * g_frameBufWidth * c_frameTexelSize) + (pixelPosition.x * c_frameTexelSize);" << std::endl;
+		shaderBuilder << "		uint dstPixel = Memory_Read32(frameAddress);" << std::endl;
+		shaderBuilder << "		vec4 dstColor = PSM32ToVec4(dstPixel);" << std::endl;
+	}
+	else if((caps.framePsm == PSMCT16) || (caps.framePsm == PSMCT16S))
+	{
+		shaderBuilder << "		const uint c_frameTexelSize = 2;" << std::endl;
+		shaderBuilder << "		uint frameAddress = g_frameBufPtr + (pixelPosition.y * g_frameBufWidth * c_frameTexelSize) + (pixelPosition.x * c_frameTexelSize);" << std::endl;
+		shaderBuilder << "		uint dstPixel = Memory_Read16(frameAddress);" << std::endl;
+		shaderBuilder << "		vec4 dstColor = PSM16ToVec4(dstPixel);" << std::endl;
+	}
+	else
+	{
+		assert(false);
+	}
 
 	if(caps.hasAlphaBlend)
 	{
@@ -467,8 +515,21 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 	shaderBuilder << "		if((g_colorMask & 0x0000FF00) == 0) fragColor.g = dstColor.g;" << std::endl;
 	shaderBuilder << "		if((g_colorMask & 0x000000FF) == 0) fragColor.r = dstColor.r;" << std::endl;
 
-	shaderBuilder << "		uint pixel = uint(fragColor.r * 255.0) << 0 | uint(fragColor.g * 255.0) << 8 | uint(fragColor.b * 255.0) << 16 | uint(fragColor.a * 255.0) << 24;" << std::endl;
-	shaderBuilder << "		Memory_SetWord(frameAddress, pixel);" << std::endl;
+	if(caps.framePsm == PSMCT24)
+	{
+		shaderBuilder << "		fragColor.a = dstColor.a;" << std::endl;
+	}
+
+	if((caps.framePsm == PSMCT32) || (caps.framePsm == PSMCT24))
+	{
+		shaderBuilder << "		uint pixel = Vec4ToPSM32(fragColor);" << std::endl;
+		shaderBuilder << "		Memory_Write32(frameAddress, pixel);" << std::endl;
+	}
+	else if((caps.framePsm == PSMCT16) || (caps.framePsm == PSMCT16S))
+	{
+		shaderBuilder << "		uint pixel = Vec4ToPSM16(fragColor);" << std::endl;
+		shaderBuilder << "		Memory_Write16(frameAddress, pixel);" << std::endl;
+	}
 
 	shaderBuilder << "	}" << std::endl;
 
@@ -611,18 +672,98 @@ std::string CGSH_OpenGL::GenerateMemoryAccessSection()
 	shaderBuilder << "layout(binding = 0, r32ui) uniform uimage2D g_memory;" << std::endl;
 	shaderBuilder << "const uint c_memorySize = 1024;" << std::endl;
 
-	shaderBuilder << "void Memory_SetWord(uint address, uint value)" << std::endl;
+	shaderBuilder << "void Memory_Write32(uint address, uint value)" << std::endl;
 	shaderBuilder << "{" << std::endl;
 	shaderBuilder << "	uint wordAddress = address / 4;" << std::endl;
 	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
 	shaderBuilder << "	imageStore(g_memory, coords, uvec4(value));" << std::endl;
 	shaderBuilder << "}" << std::endl;
 
-	shaderBuilder << "uint Memory_GetWord(uint address)" << std::endl;
+	shaderBuilder << "void Memory_Write16(uint address, uint value)" << std::endl;
+	shaderBuilder << "{" << std::endl;
+	shaderBuilder << "	uint wordAddress = address / 4;" << std::endl;
+	shaderBuilder << "	uint shiftAmount = (address & 2) * 8;" << std::endl;
+	shaderBuilder << "	uint mask = 0xFFFFFFFF ^ (0xFFFF << shiftAmount);";
+	shaderBuilder << "	uint valueWord = value << shiftAmount;";
+	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
+	shaderBuilder << "	imageAtomicAnd(g_memory, coords, mask);" << std::endl;
+	shaderBuilder << "	imageAtomicOr(g_memory, coords, valueWord);" << std::endl;
+	shaderBuilder << "}" << std::endl;
+
+	shaderBuilder << "void Memory_Write8(uint address, uint value)" << std::endl;
+	shaderBuilder << "{" << std::endl;
+	shaderBuilder << "	uint wordAddress = address / 4;" << std::endl;
+	shaderBuilder << "	uint shiftAmount = (address & 3) * 8;" << std::endl;
+	shaderBuilder << "	uint mask = 0xFFFFFFFF ^ (0xFF << shiftAmount);";
+	shaderBuilder << "	uint valueWord = value << shiftAmount;";
+	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
+	shaderBuilder << "	imageAtomicAnd(g_memory, coords, mask);" << std::endl;
+	shaderBuilder << "	imageAtomicOr(g_memory, coords, valueWord);" << std::endl;
+	shaderBuilder << "}" << std::endl;
+
+	shaderBuilder << "void Memory_Write4(uint address, uint nibIndex, uint value)" << std::endl;
+	shaderBuilder << "{" << std::endl;
+	shaderBuilder << "	uint wordAddress = address / 4;";
+	shaderBuilder << "	uint shiftAmount = ((address & 3) * 2 + nibIndex) * 4;" << std::endl;
+	shaderBuilder << "	uint mask = 0xFFFFFFFF ^ (0xF << shiftAmount);";
+	shaderBuilder << "	uint valueWord = value << shiftAmount;";
+	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
+	shaderBuilder << "	imageAtomicAnd(g_memory, coords, mask);" << std::endl;
+	shaderBuilder << "	imageAtomicOr(g_memory, coords, valueWord);" << std::endl;
+	shaderBuilder << "}" << std::endl;
+
+	shaderBuilder << "uint Memory_Read32(uint address)" << std::endl;
 	shaderBuilder << "{" << std::endl;
 	shaderBuilder << "	uint wordAddress = address / 4;" << std::endl;
 	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
 	shaderBuilder << "	return imageLoad(g_memory, coords).r;" << std::endl;
+	shaderBuilder << "}" << std::endl;
+
+	shaderBuilder << "uint Memory_Read16(uint address)" << std::endl;
+	shaderBuilder << "{" << std::endl;
+	shaderBuilder << "	uint wordAddress = address / 4;" << std::endl;
+	shaderBuilder << "	uint shiftAmount = (address & 2) * 8;" << std::endl;
+	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
+	shaderBuilder << "	uint pixel = imageLoad(g_memory, coords).r;" << std::endl;
+	shaderBuilder << "	return (pixel >> shiftAmount) & 0xFFFF;" << std::endl;
+	shaderBuilder << "}" << std::endl;
+
+	shaderBuilder << "uint Memory_Read8(uint address)" << std::endl;
+	shaderBuilder << "{" << std::endl;
+	shaderBuilder << "	uint wordAddress = address / 4;" << std::endl;
+	shaderBuilder << "	uint shiftAmount = (address & 3) * 8;" << std::endl;
+	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
+	shaderBuilder << "	uint pixel = imageLoad(g_memory, coords).r;" << std::endl;
+	shaderBuilder << "	return (pixel >> shiftAmount) & 0xFF;" << std::endl;
+	shaderBuilder << "}" << std::endl;
+
+	shaderBuilder << "uint Memory_Read4(uint address, uint nibIndex)" << std::endl;
+	shaderBuilder << "{" << std::endl;
+	shaderBuilder << "	uint wordAddress = address / 4;" << std::endl;
+	shaderBuilder << "	uint shiftAmount = ((address & 3) * 2 + nibIndex) * 4;" << std::endl;
+	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
+	shaderBuilder << "	uint pixel = imageLoad(g_memory, coords).r;" << std::endl;
+	shaderBuilder << "	return (pixel >> shiftAmount) & 0xF;" << std::endl;
+	shaderBuilder << "}" << std::endl;
+
+	shaderBuilder << "uint Vec4ToPSM32(vec4 color)" << std::endl;
+	shaderBuilder << "{" << std::endl;
+	shaderBuilder << "	uint pixel = 0;" << std::endl;
+	shaderBuilder << "	pixel |= uint(color.r * 255.0) << 0;" << std::endl;
+	shaderBuilder << "	pixel |= uint(color.g * 255.0) << 8;" << std::endl;
+	shaderBuilder << "	pixel |= uint(color.b * 255.0) << 16;" << std::endl;
+	shaderBuilder << "	pixel |= uint(color.a * 255.0) << 24;" << std::endl;
+	shaderBuilder << "	return pixel;" << std::endl;
+	shaderBuilder << "}" << std::endl;
+
+	shaderBuilder << "uint Vec4ToPSM16(vec4 color)" << std::endl;
+	shaderBuilder << "{" << std::endl;
+	shaderBuilder << "	uint pixel = 0;" << std::endl;
+	shaderBuilder << "	pixel |= uint(color.r * 31.0) << 0;" << std::endl;
+	shaderBuilder << "	pixel |= uint(color.g * 31.0) << 5;" << std::endl;
+	shaderBuilder << "	pixel |= uint(color.b * 31.0) << 10;" << std::endl;
+	shaderBuilder << "	pixel |= uint(color.a) << 15;" << std::endl;
+	shaderBuilder << "	return pixel;" << std::endl;
 	shaderBuilder << "}" << std::endl;
 
 	shaderBuilder << "vec4 PSM32ToVec4(uint pixel)" << std::endl;
@@ -633,7 +774,17 @@ std::string CGSH_OpenGL::GenerateMemoryAccessSection()
 	shaderBuilder << "	result.b = float((pixel & 0x00FF0000) >> 16) / 255.0;" << std::endl;
 	shaderBuilder << "	result.a = float((pixel & 0xFF000000) >> 24) / 255.0;" << std::endl;
 	shaderBuilder << "	return result;" << std::endl;
-	shaderBuilder << "}";
+	shaderBuilder << "}" << std::endl;
+
+	shaderBuilder << "vec4 PSM16ToVec4(uint pixel)" << std::endl;
+	shaderBuilder << "{" << std::endl;
+	shaderBuilder << "	vec4 result;" << std::endl;
+	shaderBuilder << "	result.r = float((pixel & 0x001F) >> 0) / 31.0;" << std::endl;
+	shaderBuilder << "	result.g = float((pixel & 0x03E0) >> 5) / 31.0;" << std::endl;
+	shaderBuilder << "	result.b = float((pixel & 0x7C00) >> 10) / 31.0;" << std::endl;
+	shaderBuilder << "	result.a = float((pixel & 0x8000) >> 15) / 1.0;" << std::endl;
+	shaderBuilder << "	return result;" << std::endl;
+	shaderBuilder << "}" << std::endl;
 
 	auto shaderSource = shaderBuilder.str();
 	return shaderSource;
@@ -674,11 +825,20 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GeneratePresentProgram()
 		shaderBuilder << "uniform uint g_frameBufWidth;" << std::endl;
 		shaderBuilder << "void main()" << std::endl;
 		shaderBuilder << "{" << std::endl;
-		shaderBuilder << "	ivec2 pixelPosition = ivec2(v_texCoord.x * 640.0, v_texCoord.y * 448.0);" << std::endl;
+		shaderBuilder << "	ivec2 pixelPosition = ivec2(v_texCoord.x * 512.0, v_texCoord.y * 448.0);" << std::endl;
+//		shaderBuilder << "	ivec2 pixelPosition = ivec2(v_texCoord.x * 640.0, v_texCoord.y * 256.0);" << std::endl;
+#if 0
 		shaderBuilder << "	const uint c_texelSize = 4;" << std::endl;
 		shaderBuilder << "	uint frameAddress = g_frameBufPtr + (pixelPosition.y * g_frameBufWidth * c_texelSize) + (pixelPosition.x * c_texelSize);" << std::endl;
-		shaderBuilder << "	uint pixel = Memory_GetWord(frameAddress);" << std::endl;
+		shaderBuilder << "	uint pixel = Memory_Read32(frameAddress);" << std::endl;
 		shaderBuilder << "	fragColor = PSM32ToVec4(pixel);" << std::endl;
+#endif
+#if 1
+		shaderBuilder << "	const uint c_texelSize = 2;" << std::endl;
+		shaderBuilder << "	uint frameAddress = g_frameBufPtr + (pixelPosition.y * g_frameBufWidth * c_texelSize) + (pixelPosition.x * c_texelSize);" << std::endl;
+		shaderBuilder << "	uint pixel = Memory_Read16(frameAddress);" << std::endl;
+		shaderBuilder << "	fragColor = PSM16ToVec4(pixel);" << std::endl;
+#endif
 		shaderBuilder << "}" << std::endl;
 
 		pixelShader.SetSource(shaderBuilder.str().c_str());
@@ -759,7 +919,61 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateCopyToFbProgram()
 	return program;
 }
 
-Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgram()
+std::string CGSH_OpenGL::GenerateXferProgramBase()
+{
+	std::stringstream shaderBuilder;
+	shaderBuilder << "#version 430" << std::endl;
+
+	shaderBuilder << "layout(local_size_x = " << g_xferWorkGroupSize << ") in;" << std::endl;
+
+	shaderBuilder << "layout(binding = 0, std140) uniform xferParams" << std::endl;
+	shaderBuilder << "{" << std::endl;
+	shaderBuilder << "	uint g_bufAddress;" << std::endl;
+	shaderBuilder << "	uint g_bufWidth;" << std::endl;
+	shaderBuilder << "	uint g_rrw;" << std::endl;
+	shaderBuilder << "	uint g_dsax;" << std::endl;
+	shaderBuilder << "	uint g_dsay;" << std::endl;
+	shaderBuilder << "};" << std::endl;
+
+	shaderBuilder << "layout(binding = 0, std430) buffer xferData" << std::endl;
+	shaderBuilder << "{" << std::endl;
+	shaderBuilder << "	uint g_data[];" << std::endl;
+	shaderBuilder << "};" << std::endl;
+
+	shaderBuilder << "uvec2 Xfer_GetPixelPosition(uint pixelIndex)" << std::endl;
+	shaderBuilder << "{" << std::endl;
+	shaderBuilder << "	uint rrx = pixelIndex % g_rrw;" << std::endl;
+	shaderBuilder << "	uint rry = pixelIndex / g_rrw;" << std::endl;
+	shaderBuilder << "	return uvec2((rrx + g_dsax) % 2048, (rry + g_dsay) % 2048);" << std::endl;
+	shaderBuilder << "}" << std::endl;
+
+	shaderBuilder << "uint XferStream_Read16(uint pixelIndex)" << std::endl;
+	shaderBuilder << "{" << std::endl;
+	shaderBuilder << "	uint srcOffset = pixelIndex / 2;" << std::endl;
+	shaderBuilder << "	uint srcShift = (pixelIndex % 2) * 16;" << std::endl;
+	shaderBuilder << "	return (g_data[srcOffset] >> srcShift) & 0xFFFF;" << std::endl;
+	shaderBuilder << "}" << std::endl;
+
+	shaderBuilder << "uint XferStream_Read8(uint pixelIndex)" << std::endl;
+	shaderBuilder << "{" << std::endl;
+	shaderBuilder << "	uint srcOffset = pixelIndex / 4;" << std::endl;
+	shaderBuilder << "	uint srcShift = (pixelIndex % 4) * 8;" << std::endl;
+	shaderBuilder << "	return (g_data[srcOffset] >> srcShift) & 0xFF;" << std::endl;
+	shaderBuilder << "}" << std::endl;
+
+	shaderBuilder << "uint XferStream_Read4(uint pixelIndex)" << std::endl;
+	shaderBuilder << "{" << std::endl;
+	shaderBuilder << "	uint srcOffset = pixelIndex / 16;" << std::endl;
+	shaderBuilder << "	uint srcShift = (pixelIndex % 16) * 4;" << std::endl;
+	shaderBuilder << "	return (g_data[srcOffset] >> srcShift) & 0xF;" << std::endl;
+	shaderBuilder << "}" << std::endl;
+
+	shaderBuilder << GenerateMemoryAccessSection() << std::endl;
+
+	return shaderBuilder.str();
+}
+
+Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgramPSMCT32()
 {
 	Framework::OpenGl::CShader computeShader(GL_COMPUTE_SHADER);
 
@@ -767,39 +981,241 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgram()
 
 	{
 		std::stringstream shaderBuilder;
-		shaderBuilder << "#version 430" << std::endl;
 
-		shaderBuilder << "layout(local_size_x = 128) in;" << std::endl;
-
-		shaderBuilder << "layout(binding = 0, std140) uniform xferParams" << std::endl;
-		shaderBuilder << "{" << std::endl;
-		shaderBuilder << "	uint g_bufAddress;" << std::endl;
-		shaderBuilder << "	uint g_bufWidth;" << std::endl;
-		shaderBuilder << "	uint g_rrw;" << std::endl;
-		shaderBuilder << "	uint g_dsax;" << std::endl;
-		shaderBuilder << "	uint g_dsay;" << std::endl;
-		shaderBuilder << "};" << std::endl;
-
-		shaderBuilder << "layout(binding = 0, std430) buffer xferData" << std::endl;
-		shaderBuilder << "{" << std::endl;
-		shaderBuilder << "	uint g_data[];" << std::endl;
-		shaderBuilder << "};" << std::endl;
-
-		shaderBuilder << GenerateMemoryAccessSection() << std::endl;
+		shaderBuilder << GenerateXferProgramBase();
 
 		shaderBuilder << "void main()" << std::endl;
 		shaderBuilder << "{" << std::endl;
+		shaderBuilder << "	uint pixelIndex = gl_GlobalInvocationID.x;" << std::endl;
+		shaderBuilder << "	uint pixel = g_data[pixelIndex];" << std::endl;
+		shaderBuilder << "	uvec2 pixelPos = Xfer_GetPixelPosition(pixelIndex);" << std::endl;
 		shaderBuilder << "	const uint c_texelSize = 4;" << std::endl;
-		shaderBuilder << "	uint srcOffset = gl_GlobalInvocationID.x;" << std::endl;
-		shaderBuilder << "	uint pixel = g_data[srcOffset];" << std::endl;
-		shaderBuilder << "	uint rrx = srcOffset % g_rrw;" << std::endl;
-		shaderBuilder << "	uint rry = srcOffset / g_rrw;" << std::endl;
-		shaderBuilder << "	uint trxX = (rrx + g_dsax) % 2048;" << std::endl;
-		shaderBuilder << "	uint trxY = (rry + g_dsay) % 2048;" << std::endl;
-		shaderBuilder << "	uint address = g_bufAddress + (trxY * g_bufWidth * c_texelSize) + (trxX * c_texelSize);" << std::endl;
-		shaderBuilder << "	Memory_SetWord(address, pixel);" << std::endl;
+		shaderBuilder << "	uint address = g_bufAddress + (pixelPos.y * g_bufWidth * c_texelSize) + (pixelPos.x * c_texelSize);" << std::endl;
+		shaderBuilder << "	Memory_Write32(address, pixel);" << std::endl;
 		shaderBuilder << "}" << std::endl;
+		
+		auto source = shaderBuilder.str();
+		computeShader.SetSource(source.c_str());
+		FRAMEWORK_MAYBE_UNUSED bool result = computeShader.Compile();
+		assert(result);
+	}
 
+	{
+		program->AttachShader(computeShader);
+
+		FRAMEWORK_MAYBE_UNUSED bool result = program->Link();
+		assert(result);
+	}
+
+	return program;
+}
+
+Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgramPSMCT16()
+{
+	Framework::OpenGl::CShader computeShader(GL_COMPUTE_SHADER);
+
+	auto program = std::make_shared<Framework::OpenGl::CProgram>();
+
+	{
+		std::stringstream shaderBuilder;
+
+		shaderBuilder << GenerateXferProgramBase();
+
+		shaderBuilder << "void main()" << std::endl;
+		shaderBuilder << "{" << std::endl;
+		shaderBuilder << "	uint pixelIndex = gl_GlobalInvocationID.x;" << std::endl;
+		shaderBuilder << "	uint pixel = XferStream_Read16(pixelIndex);" << std::endl;
+		shaderBuilder << "	uvec2 pixelPos = Xfer_GetPixelPosition(pixelIndex);" << std::endl;
+		shaderBuilder << "	const uint c_texelSize = 2;" << std::endl;
+		shaderBuilder << "	uint address = g_bufAddress + (pixelPos.y * g_bufWidth * c_texelSize) + (pixelPos.x * c_texelSize);" << std::endl;
+		shaderBuilder << "	Memory_Write16(address, pixel);" << std::endl;
+		shaderBuilder << "}" << std::endl;
+		
+		auto source = shaderBuilder.str();
+		computeShader.SetSource(source.c_str());
+		FRAMEWORK_MAYBE_UNUSED bool result = computeShader.Compile();
+		assert(result);
+	}
+
+	{
+		program->AttachShader(computeShader);
+
+		FRAMEWORK_MAYBE_UNUSED bool result = program->Link();
+		assert(result);
+	}
+
+	return program;
+}
+
+Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgramPSMT8()
+{
+	Framework::OpenGl::CShader computeShader(GL_COMPUTE_SHADER);
+
+	auto program = std::make_shared<Framework::OpenGl::CProgram>();
+
+	{
+		std::stringstream shaderBuilder;
+
+		shaderBuilder << GenerateXferProgramBase();
+
+		shaderBuilder << "void main()" << std::endl;
+		shaderBuilder << "{" << std::endl;
+		shaderBuilder << "	uint pixelIndex = gl_GlobalInvocationID.x;" << std::endl;
+		shaderBuilder << "	uint pixel = XferStream_Read8(pixelIndex);" << std::endl;
+		shaderBuilder << "	uvec2 pixelPos = Xfer_GetPixelPosition(pixelIndex);" << std::endl;
+		shaderBuilder << "	const uint c_texelSize = 1;" << std::endl;
+		shaderBuilder << "	uint address = g_bufAddress + (pixelPos.y * g_bufWidth * c_texelSize) + (pixelPos.x * c_texelSize);" << std::endl;
+		shaderBuilder << "	Memory_Write8(address, pixel);" << std::endl;
+		shaderBuilder << "}" << std::endl;
+		
+		auto source = shaderBuilder.str();
+		computeShader.SetSource(source.c_str());
+		FRAMEWORK_MAYBE_UNUSED bool result = computeShader.Compile();
+		assert(result);
+	}
+
+	{
+		program->AttachShader(computeShader);
+
+		FRAMEWORK_MAYBE_UNUSED bool result = program->Link();
+		assert(result);
+	}
+
+	return program;
+}
+
+Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgramPSMT4()
+{
+	Framework::OpenGl::CShader computeShader(GL_COMPUTE_SHADER);
+
+	auto program = std::make_shared<Framework::OpenGl::CProgram>();
+
+	{
+		std::stringstream shaderBuilder;
+
+		shaderBuilder << GenerateXferProgramBase();
+
+		shaderBuilder << "void main()" << std::endl;
+		shaderBuilder << "{" << std::endl;
+		shaderBuilder << "	uint pixelIndex = gl_GlobalInvocationID.x;" << std::endl;
+		shaderBuilder << "	uint pixel = XferStream_Read4(pixelIndex);" << std::endl;
+		shaderBuilder << "	uvec2 pixelPos = Xfer_GetPixelPosition(pixelIndex);" << std::endl;
+		shaderBuilder << "	const uint c_texelSize = 1;" << std::endl;
+		shaderBuilder << "	uint address = g_bufAddress + (pixelPos.y * g_bufWidth * c_texelSize) + (pixelPos.x * c_texelSize);" << std::endl;
+		shaderBuilder << "	Memory_Write4(address, pixelIndex & 1, pixel);" << std::endl;
+		shaderBuilder << "}" << std::endl;
+		
+		auto source = shaderBuilder.str();
+		computeShader.SetSource(source.c_str());
+		FRAMEWORK_MAYBE_UNUSED bool result = computeShader.Compile();
+		assert(result);
+	}
+
+	{
+		program->AttachShader(computeShader);
+
+		FRAMEWORK_MAYBE_UNUSED bool result = program->Link();
+		assert(result);
+	}
+
+	return program;
+}
+
+Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgramPSMT8H()
+{
+	Framework::OpenGl::CShader computeShader(GL_COMPUTE_SHADER);
+
+	auto program = std::make_shared<Framework::OpenGl::CProgram>();
+
+	{
+		std::stringstream shaderBuilder;
+
+		shaderBuilder << GenerateXferProgramBase();
+
+		shaderBuilder << "void main()" << std::endl;
+		shaderBuilder << "{" << std::endl;
+		shaderBuilder << "	uint pixelIndex = gl_GlobalInvocationID.x;" << std::endl;
+		shaderBuilder << "	uint pixel = XferStream_Read8(pixelIndex);" << std::endl;
+		shaderBuilder << "	uvec2 pixelPos = Xfer_GetPixelPosition(pixelIndex);" << std::endl;
+		shaderBuilder << "	const uint c_texelSize = 4;" << std::endl;
+		shaderBuilder << "	uint address = g_bufAddress + (pixelPos.y * g_bufWidth * c_texelSize) + (pixelPos.x * c_texelSize);" << std::endl;
+		shaderBuilder << "	Memory_Write8(address + 3, pixel);" << std::endl;
+		shaderBuilder << "}" << std::endl;
+		
+		auto source = shaderBuilder.str();
+		computeShader.SetSource(source.c_str());
+		FRAMEWORK_MAYBE_UNUSED bool result = computeShader.Compile();
+		assert(result);
+	}
+
+	{
+		program->AttachShader(computeShader);
+
+		FRAMEWORK_MAYBE_UNUSED bool result = program->Link();
+		assert(result);
+	}
+
+	return program;
+}
+
+Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgramPSMT4HL()
+{
+	Framework::OpenGl::CShader computeShader(GL_COMPUTE_SHADER);
+
+	auto program = std::make_shared<Framework::OpenGl::CProgram>();
+
+	{
+		std::stringstream shaderBuilder;
+
+		shaderBuilder << GenerateXferProgramBase();
+
+		shaderBuilder << "void main()" << std::endl;
+		shaderBuilder << "{" << std::endl;
+		shaderBuilder << "	uint pixelIndex = gl_GlobalInvocationID.x;" << std::endl;
+		shaderBuilder << "	uint pixel = XferStream_Read4(pixelIndex);" << std::endl;
+		shaderBuilder << "	uvec2 pixelPos = Xfer_GetPixelPosition(pixelIndex);" << std::endl;
+		shaderBuilder << "	const uint c_texelSize = 4;" << std::endl;
+		shaderBuilder << "	uint address = g_bufAddress + (pixelPos.y * g_bufWidth * c_texelSize) + (pixelPos.x * c_texelSize);" << std::endl;
+		shaderBuilder << "	Memory_Write4(address + 3, 0, pixel);" << std::endl;
+		shaderBuilder << "}" << std::endl;
+		
+		auto source = shaderBuilder.str();
+		computeShader.SetSource(source.c_str());
+		FRAMEWORK_MAYBE_UNUSED bool result = computeShader.Compile();
+		assert(result);
+	}
+
+	{
+		program->AttachShader(computeShader);
+
+		FRAMEWORK_MAYBE_UNUSED bool result = program->Link();
+		assert(result);
+	}
+
+	return program;
+}
+
+Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgramPSMT4HH()
+{
+	Framework::OpenGl::CShader computeShader(GL_COMPUTE_SHADER);
+
+	auto program = std::make_shared<Framework::OpenGl::CProgram>();
+
+	{
+		std::stringstream shaderBuilder;
+
+		shaderBuilder << GenerateXferProgramBase();
+
+		shaderBuilder << "void main()" << std::endl;
+		shaderBuilder << "{" << std::endl;
+		shaderBuilder << "	uint pixelIndex = gl_GlobalInvocationID.x;" << std::endl;
+		shaderBuilder << "	uint pixel = XferStream_Read4(pixelIndex);" << std::endl;
+		shaderBuilder << "	uvec2 pixelPos = Xfer_GetPixelPosition(pixelIndex);" << std::endl;
+		shaderBuilder << "	const uint c_texelSize = 4;" << std::endl;
+		shaderBuilder << "	uint address = g_bufAddress + (pixelPos.y * g_bufWidth * c_texelSize) + (pixelPos.x * c_texelSize);" << std::endl;
+		shaderBuilder << "	Memory_Write4(address + 3, 1, pixel);" << std::endl;
+		shaderBuilder << "}" << std::endl;
+		
 		auto source = shaderBuilder.str();
 		computeShader.SetSource(source.c_str());
 		FRAMEWORK_MAYBE_UNUSED bool result = computeShader.Compile();

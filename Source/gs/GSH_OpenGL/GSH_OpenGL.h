@@ -45,7 +45,7 @@ protected:
 private:
 	typedef CGsTextureCache<Framework::OpenGl::CTexture> TextureCache;
 
-	struct SHADERCAPS : public convertible<uint32>
+	struct SHADERCAPS : public convertible<uint64>
 	{
 		unsigned int texFunction : 2; //0 - Modulate, 1 - Decal, 2 - Highlight, 3 - Hightlight2
 		unsigned int texClampS : 2;
@@ -66,14 +66,17 @@ private:
 		unsigned int blendFactorB : 2;
 		unsigned int blendFactorC : 2;
 		unsigned int blendFactorD : 2;
-		unsigned int padding : 1;
+		unsigned int padding1 : 1;
+		unsigned int framePsm : 6;
+		unsigned int texPsm : 6;
+		unsigned int padding2 : 20;
 
 		bool isIndexedTextureSource() const
 		{
 			return texSourceMode == TEXTURE_SOURCE_MODE_IDX4 || texSourceMode == TEXTURE_SOURCE_MODE_IDX8;
 		}
 	};
-	static_assert(sizeof(SHADERCAPS) == sizeof(uint32), "SHADERCAPS structure size must be 4 bytes.");
+	static_assert(sizeof(SHADERCAPS) == sizeof(uint64), "SHADERCAPS structure size must be 8 bytes.");
 
 	struct RENDERSTATE
 	{
@@ -207,7 +210,7 @@ private:
 		TEXTURE_CLAMP_MODE_REGION_REPEAT_SIMPLE = 3
 	};
 
-	typedef std::unordered_map<uint32, Framework::OpenGl::ProgramPtr> ShaderMap;
+	typedef std::unordered_map<uint64, Framework::OpenGl::ProgramPtr> ShaderMap;
 
 	class CPalette
 	{
@@ -328,6 +331,7 @@ private:
 	std::string GenerateAlphaBlendABDValue(ALPHABLEND_ABD);
 	std::string GenerateAlphaBlendCValue(ALPHABLEND_C);
 	std::string GenerateAlphaTestSection(ALPHA_TEST_METHOD);
+	std::string GenerateXferProgramBase();
 	std::string GenerateMemoryAccessSection();
 
 	Framework::OpenGl::ProgramPtr GeneratePresentProgram();
@@ -338,7 +342,13 @@ private:
 	Framework::OpenGl::CBuffer GenerateCopyToFbVertexBuffer();
 	Framework::OpenGl::CVertexArray GenerateCopyToFbVertexArray();
 
-	Framework::OpenGl::ProgramPtr GenerateXferProgram();
+	Framework::OpenGl::ProgramPtr GenerateXferProgramPSMCT32();
+	Framework::OpenGl::ProgramPtr GenerateXferProgramPSMCT16();
+	Framework::OpenGl::ProgramPtr GenerateXferProgramPSMT8();
+	Framework::OpenGl::ProgramPtr GenerateXferProgramPSMT4();
+	Framework::OpenGl::ProgramPtr GenerateXferProgramPSMT8H();
+	Framework::OpenGl::ProgramPtr GenerateXferProgramPSMT4HL();
+	Framework::OpenGl::ProgramPtr GenerateXferProgramPSMT4HH();
 
 	Framework::OpenGl::CVertexArray GeneratePrimVertexArray();
 	Framework::OpenGl::CBuffer GenerateUniformBlockBuffer(size_t);
@@ -363,6 +373,7 @@ private:
 
 	static bool CanRegionRepeatClampModeSimplified(uint32, uint32);
 	void FillShaderCapsFromTexture(SHADERCAPS&, const uint64&, const uint64&, const uint64&, const uint64&);
+	void FillShaderCapsFromFrame(SHADERCAPS&, const uint64&);
 	void FillShaderCapsFromTestAndZbuf(SHADERCAPS&, const uint64&, const uint64&);
 	void FillShaderCapsFromAlpha(SHADERCAPS&, const uint64&);
 
@@ -432,7 +443,14 @@ private:
 	Framework::OpenGl::CBuffer m_primBuffer;
 	Framework::OpenGl::CVertexArray m_primVertexArray;
 
-	Framework::OpenGl::ProgramPtr m_xferProgram;
+	Framework::OpenGl::ProgramPtr m_xferProgramPSMCT32;
+	Framework::OpenGl::ProgramPtr m_xferProgramPSMCT16;
+	Framework::OpenGl::ProgramPtr m_xferProgramPSMT8;
+	Framework::OpenGl::ProgramPtr m_xferProgramPSMT4;
+	Framework::OpenGl::ProgramPtr m_xferProgramPSMT8H;
+	Framework::OpenGl::ProgramPtr m_xferProgramPSMT4HL;
+	Framework::OpenGl::ProgramPtr m_xferProgramPSMT4HH;
+	static const uint32 g_xferWorkGroupSize;
 	Framework::OpenGl::CBuffer m_xferParamsBuffer;
 	Framework::OpenGl::CBuffer m_xferBuffer;
 	Framework::OpenGl::CTexture m_memoryTexture;
