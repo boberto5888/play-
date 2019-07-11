@@ -206,13 +206,13 @@ public:
 			m_nPointer = nPointer;
 			m_nWidth = nWidth;
 			m_pMemory = pMemory;
+			EnsureInitPageOffsets();
+		}
 
-			//This might not be thread safe (?)
-			if(!m_pageOffsetsInitialized)
-			{
-				BuildPageOffsetTable();
-				m_pageOffsetsInitialized = true;
-			}
+		static uint32* GetPageOffsets()
+		{
+			EnsureInitPageOffsets();
+			return reinterpret_cast<uint32*>(m_pageOffsets);
 		}
 
 		typename Storage::Unit GetPixel(unsigned int nX, unsigned int nY)
@@ -238,7 +238,16 @@ public:
 		}
 
 	private:
-		void BuildPageOffsetTable()
+		static void EnsureInitPageOffsets()
+		{
+			if(!m_pageOffsetsInitialized)
+			{
+				BuildPageOffsetTable();
+				m_pageOffsetsInitialized = true;
+			}
+		}
+
+		static void BuildPageOffsetTable()
 		{
 			for(uint32 y = 0; y < Storage::PAGEHEIGHT; y++)
 			{
@@ -354,6 +363,41 @@ inline void CGsPixelFormats::CPixelIndexor<CGsPixelFormats::STORAGEPSMT4>::SetPi
 template <>
 inline void CGsPixelFormats::CPixelIndexor<CGsPixelFormats::STORAGEPSMT4>::BuildPageOffsetTable()
 {
+	typedef CGsPixelFormats::STORAGEPSMT4 Storage;
+
+	for(uint32 y = 0; y < Storage::PAGEHEIGHT; y++)
+	{
+		for(uint32 x = 0; x < Storage::PAGEWIDTH; x++)
+		{
+			//TODO: Handle nibble offset
+
+			uint32 workX = x;
+			uint32 workY = y;
+
+			uint32 blockNum = Storage::m_nBlockSwizzleTable[workY / Storage::BLOCKHEIGHT][workX / Storage::BLOCKWIDTH];
+
+			workX %= Storage::BLOCKWIDTH;
+			workY %= Storage::BLOCKHEIGHT;
+
+			uint32 columnNum = (workY / Storage::COLUMNHEIGHT);
+
+			workY %= Storage::COLUMNHEIGHT;
+
+			uint32 shiftAmount = (workX & 0x18);
+			shiftAmount += (workY & 0x02) << 1;
+			uint32 byte = shiftAmount / 8;
+
+			uint32 subTable = (workY & 0x02) >> 1;
+			subTable ^= (columnNum & 0x01);
+
+			workX &= 0x07;
+			workY &= 0x01;
+
+			uint32 offset = (columnNum * COLUMNSIZE) + (blockNum * BLOCKSIZE) + (Storage::m_nColumnWordTable[subTable][workY][workX] * 4) + byte;
+			assert(offset < PAGESIZE);
+			m_pageOffsets[y][x] = offset;
+		}
+	}
 }
 
 template <>

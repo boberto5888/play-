@@ -259,6 +259,7 @@ void CGSH_OpenGL::FlipImpl()
 		//glUniform1i(m_presentTextureUniform, 0);
 
 		glBindImageTexture(0, m_memoryTexture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32UI);
+		glBindImageTexture(2, GetSwizzleTable(fb.nPSM), 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32UI);
 
 		assert(m_presentTexCoordScaleUniform != -1);
 		glUniform2f(m_presentTexCoordScaleUniform, 1, 1);
@@ -281,6 +282,7 @@ void CGSH_OpenGL::FlipImpl()
 	static bool g_dumpFramebuffers = false;
 	if(g_dumpFramebuffers)
 	{
+#if 0
 		for(const auto& framebuffer : m_framebuffers)
 		{
 			glBindTexture(GL_TEXTURE_2D, framebuffer->m_texture);
@@ -296,7 +298,21 @@ void CGSH_OpenGL::FlipImpl()
 			glGetTexImage(GL_TEXTURE_2D, 0, GL_RED_INTEGER, GL_UNSIGNED_INT, data.data());
 			CHECKGLERROR();
 		}
-		glBindTexture(GL_TEXTURE_2D, 0);
+#endif
+		std::vector<uint32> data;
+		data.resize(MEMORY_TEXTURE_SIZE * MEMORY_TEXTURE_SIZE);
+
+		{
+			glBindTexture(GL_TEXTURE_2D, m_memoryTexture);
+			glGetTexImage(GL_TEXTURE_2D, 0, GL_RED_INTEGER, GL_UNSIGNED_INT, data.data());
+			CHECKGLERROR();
+			glBindTexture(GL_TEXTURE_2D, 0);
+		}
+
+		{
+			Framework::CStdStream memoryStream("gs.bin", "wb");
+			memoryStream.Write(data.data(), data.size() * sizeof(uint32));
+		}
 	}
 
 	PresentBackbuffer();
@@ -334,6 +350,20 @@ void CGSH_OpenGL::LoadPreferences()
 	//m_fbScale = CAppConfig::GetInstance().GetPreferenceInteger(PREF_CGSH_OPENGL_RESOLUTION_FACTOR);
 	m_fbScale = 1;
 	m_forceBilinearTextures = CAppConfig::GetInstance().GetPreferenceBoolean(PREF_CGSH_OPENGL_FORCEBILINEARTEXTURES);
+}
+
+template <typename StorageFormat>
+static Framework::OpenGl::CTexture CreateSwizzleTable()
+{
+	auto result = Framework::OpenGl::CTexture::Create();
+	glBindTexture(GL_TEXTURE_2D, result);
+	glTexStorage2D(GL_TEXTURE_2D, 1, GL_R32UI,
+		StorageFormat::PAGEWIDTH, StorageFormat::PAGEHEIGHT);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+		StorageFormat::PAGEWIDTH, StorageFormat::PAGEHEIGHT,
+		GL_RED_INTEGER, GL_UNSIGNED_INT, CGsPixelFormats::CPixelIndexor<StorageFormat>::GetPageOffsets());
+	CHECKGLERROR();
+	return result;
 }
 
 void CGSH_OpenGL::InitializeRC()
@@ -376,6 +406,12 @@ void CGSH_OpenGL::InitializeRC()
 	glBindTexture(GL_TEXTURE_2D, m_memoryTexture);
 	glTexStorage2D(GL_TEXTURE_2D, 1, GL_R32UI, MEMORY_TEXTURE_SIZE, MEMORY_TEXTURE_SIZE);
 	CHECKGLERROR();
+
+	m_swizzleTexturePSMCT32 = CreateSwizzleTable<CGsPixelFormats::STORAGEPSMCT32>();
+	m_swizzleTexturePSMCT16 = CreateSwizzleTable<CGsPixelFormats::STORAGEPSMCT16>();
+	m_swizzleTexturePSMCT16S = CreateSwizzleTable<CGsPixelFormats::STORAGEPSMCT16S>();
+	m_swizzleTexturePSMT8 = CreateSwizzleTable<CGsPixelFormats::STORAGEPSMT8>();
+	m_swizzleTexturePSMT4 = CreateSwizzleTable<CGsPixelFormats::STORAGEPSMT4>();
 
 	m_xferBuffer = Framework::OpenGl::CBuffer::Create();
 
@@ -1098,6 +1134,7 @@ void CGSH_OpenGL::SetupFramebuffer(uint64 frameReg, uint64 zbufReg, uint64 sciss
 	m_renderState.framebufferHandle = framebuffer->m_framebuffer;
 	m_renderState.framebufferTextureHandle = framebuffer->m_texture;
 	m_renderState.depthbufferTextureHandle = depthbuffer->m_depthBufferImage;
+	m_renderState.frameSwizzleTableHandle = GetSwizzleTable(frame.nPsm);
 	m_validGlState &= ~GLSTATE_FRAMEBUFFER; //glBindFramebuffer used to set just above
 
 	//We assume that we will be drawing to this framebuffer and that we'll need
@@ -1390,6 +1427,8 @@ void CGSH_OpenGL::SetupTexture(uint64 primReg, uint64 tex0Reg, uint64 tex1Reg, u
 		m_renderState.texture1Handle = PreparePalette(tex0);
 	}
 
+	m_renderState.textureSwizzleTableHandle = GetSwizzleTable(tex0.nPsm);
+
 	memset(m_vertexParams.texMatrix, 0, sizeof(m_vertexParams.texMatrix));
 	m_vertexParams.texMatrix[0 + (0 * 4)] = texInfo.scaleRatioX;
 	m_vertexParams.texMatrix[1 + (1 * 4)] = texInfo.scaleRatioY;
@@ -1434,6 +1473,27 @@ CGSH_OpenGL::DepthbufferPtr CGSH_OpenGL::FindDepthbuffer(const ZBUF& zbuf, const
 	                                        });
 
 	return (depthbufferIterator != std::end(m_depthbuffers)) ? *(depthbufferIterator) : DepthbufferPtr();
+}
+
+GLuint CGSH_OpenGL::GetSwizzleTable(uint32 psm) const
+{
+	switch(psm)
+	{
+	case PSMCT32:
+	case PSMCT24:
+		return m_swizzleTexturePSMCT32;
+	case PSMCT16:
+		return m_swizzleTexturePSMCT16;
+	case PSMCT16S:
+		return m_swizzleTexturePSMCT16S;
+	case PSMT8:
+		return m_swizzleTexturePSMT8;
+	case PSMT4:
+		return m_swizzleTexturePSMT4;
+	default:
+		assert(false);
+		return 0;
+	}
 }
 
 /////////////////////////////////////////////////////////////
@@ -1797,6 +1857,10 @@ void CGSH_OpenGL::DoRenderPass()
 		glBindImageTexture(0, m_memoryTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32UI);
 		CHECKGLERROR();
 
+		glBindImageTexture(1, m_renderState.textureSwizzleTableHandle, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32UI);
+		CHECKGLERROR();
+
+#if 0
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, m_renderState.texture0Handle);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, m_renderState.texture0MinFilter);
@@ -1811,6 +1875,7 @@ void CGSH_OpenGL::DoRenderPass()
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+#endif
 
 		m_validGlState |= GLSTATE_TEXTURE;
 	}
@@ -1818,6 +1883,7 @@ void CGSH_OpenGL::DoRenderPass()
 	if((m_validGlState & GLSTATE_FRAMEBUFFER) == 0)
 	{
 		glBindFramebuffer(GL_FRAMEBUFFER, m_renderState.framebufferHandle);
+		glBindImageTexture(2, m_renderState.frameSwizzleTableHandle, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32UI);
 		CHECKGLERROR();
 		m_validGlState |= GLSTATE_FRAMEBUFFER;
 	}
@@ -2087,6 +2153,7 @@ void CGSH_OpenGL::ProcessHostToLocalTransfer()
 	{
 		uint32 pixelCount = 0;
 		Framework::OpenGl::ProgramPtr xferProgram;
+		GLuint xferSwizzleTable = GetSwizzleTable(bltBuf.nDstPsm);
 
 		switch(bltBuf.nDstPsm)
 		{
@@ -2153,6 +2220,9 @@ void CGSH_OpenGL::ProcessHostToLocalTransfer()
 		CHECKGLERROR();
 
 		glBindImageTexture(0, m_memoryTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32UI);
+		CHECKGLERROR();
+
+		glBindImageTexture(1, xferSwizzleTable, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32UI);
 		CHECKGLERROR();
 
 #ifdef _DEBUG
