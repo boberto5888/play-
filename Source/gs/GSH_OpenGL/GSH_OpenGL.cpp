@@ -1097,6 +1097,8 @@ void CGSH_OpenGL::SetupFramebuffer(uint64 frameReg, uint64 zbufReg, uint64 sciss
 	m_fragmentParams.colorMask = ~frame.nMask;
 	m_fragmentParams.frameBufPtr = frame.GetBasePtr();
 	m_fragmentParams.frameBufWidth = frame.GetWidth();
+	m_fragmentParams.depthBufPtr = zbuf.GetBasePtr();
+	m_fragmentParams.depthBufWidth = frame.GetWidth();
 	m_validGlState &= ~GLSTATE_FRAGMENT_PARAMS;
 
 	//Check if we're drawing into a buffer that's been used for depth before
@@ -1135,6 +1137,8 @@ void CGSH_OpenGL::SetupFramebuffer(uint64 frameReg, uint64 zbufReg, uint64 sciss
 	m_renderState.framebufferTextureHandle = framebuffer->m_texture;
 	m_renderState.depthbufferTextureHandle = depthbuffer->m_depthBufferImage;
 	m_renderState.frameSwizzleTableHandle = GetSwizzleTable(frame.nPsm);
+	//TODO: Swizzle is actually different for depth buffers (PSM | 0x30 to convert)
+	m_renderState.depthSwizzleTableHandle = GetSwizzleTable(zbuf.nPsm);
 	m_validGlState &= ~GLSTATE_FRAMEBUFFER; //glBindFramebuffer used to set just above
 
 	//We assume that we will be drawing to this framebuffer and that we'll need
@@ -1304,6 +1308,7 @@ void CGSH_OpenGL::FillShaderCapsFromTestAndZbuf(SHADERCAPS& shaderCaps, const ui
 		depthWriteEnabled = false;
 	}
 	shaderCaps.depthWriteEnabled = depthWriteEnabled;
+	shaderCaps.depthPsm = zbuf.nPsm | 0x30;
 }
 
 void CGSH_OpenGL::FillShaderCapsFromAlpha(SHADERCAPS& shaderCaps, const uint64& alphaReg)
@@ -1883,7 +1888,8 @@ void CGSH_OpenGL::DoRenderPass()
 	if((m_validGlState & GLSTATE_FRAMEBUFFER) == 0)
 	{
 		glBindFramebuffer(GL_FRAMEBUFFER, m_renderState.framebufferHandle);
-		glBindImageTexture(2, m_renderState.frameSwizzleTableHandle, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32UI);
+		glBindImageTexture(SHADER_IMAGE_FRAME_SWIZZLE, m_renderState.frameSwizzleTableHandle, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32UI);
+		glBindImageTexture(SHADER_IMAGE_DEPTH_SWIZZLE, m_renderState.depthSwizzleTableHandle, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32UI);
 		CHECKGLERROR();
 		m_validGlState |= GLSTATE_FRAMEBUFFER;
 	}

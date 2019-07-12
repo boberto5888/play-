@@ -155,6 +155,23 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 		orderingMode = FRAGMENT_SHADER_ORDERING_INTEL;
 	}
 
+	uint32 depthBits = [&]()
+		{
+			switch(caps.depthPsm)
+			{
+			case PSMZ32:
+				return 32;
+			case PSMZ24:
+				return 24;
+			case PSMZ16:
+			case PSMZ16S:
+				return 16;
+			default:
+				assert(false);
+				return 0;
+			}
+		}();
+
 	shaderBuilder << GLSL_VERSION << std::endl;
 
 	switch(orderingMode)
@@ -184,7 +201,7 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 
 	shaderBuilder << "layout(binding = 1, r32ui) readonly uniform uimage2D g_textureSwizzleTable;" << std::endl;
 	shaderBuilder << "layout(binding = 2, r32ui) readonly uniform uimage2D g_frameSwizzleTable;" << std::endl;
-
+	shaderBuilder << "layout(binding = " << SHADER_IMAGE_DEPTH_SWIZZLE << ", r32ui) readonly uniform uimage2D g_depthSwizzleTable;" << std::endl;
 	//shaderBuilder << "uniform sampler2D g_texture;" << std::endl;
 	//shaderBuilder << "uniform sampler2D g_palette;" << std::endl;
 
@@ -205,6 +222,8 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 	shaderBuilder << "	uint g_textureBufWidth;" << std::endl;
 	shaderBuilder << "	uint g_frameBufPtr;" << std::endl;
 	shaderBuilder << "	uint g_frameBufWidth;" << std::endl;
+	shaderBuilder << "	uint g_depthBufPtr;" << std::endl;
+	shaderBuilder << "	uint g_depthBufWidth;" << std::endl;
 	shaderBuilder << "};" << std::endl;
 
 	if(caps.texClampS == TEXTURE_CLAMP_MODE_REGION_REPEAT || caps.texClampT == TEXTURE_CLAMP_MODE_REGION_REPEAT)
@@ -435,6 +454,20 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 		assert(false);
 	}
 
+	switch(depthBits)
+	{
+	case 32:
+	case 24:
+		shaderBuilder << "	uint depthAddress = GetPixelAddress_PSMCT32(g_depthBufPtr, g_depthBufWidth, g_depthSwizzleTable, pixelPosition);" << std::endl;
+		break;
+	case 16:
+		shaderBuilder << "	uint depthAddress = GetPixelAddress_PSMCT16(g_depthBufPtr, g_depthBufWidth, g_depthSwizzleTable, pixelPosition);" << std::endl;
+		break;
+	default:
+		assert(false);
+		break;
+	}
+
 	switch(orderingMode)
 	{
 	case FRAGMENT_SHADER_ORDERING_ARB:
@@ -445,7 +478,22 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 		break;
 	}
 
-#if 0
+	if((caps.depthTestMethod == DEPTH_TEST_GEQUAL) || (caps.depthTestMethod == DEPTH_TEST_GREATER))
+	{
+		switch(depthBits)
+		{
+		case 32:
+			shaderBuilder << "	uint dstDepth = Memory_Read32(depthAddress);" << std::endl;
+			break;
+		case 16:
+			shaderBuilder << "	uint dstDepth = Memory_Read16(depthAddress);" << std::endl;
+			break;
+		default:
+			assert(false);
+			break;
+		}
+	}
+
 	//Depth test
 	switch(caps.depthTestMethod)
 	{
@@ -455,12 +503,10 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 		shaderBuilder << "	depthTestFail = true;" << std::endl;
 		break;
 	case DEPTH_TEST_GEQUAL:
-		shaderBuilder << "	uint depthValue = imageLoad(g_depthbuffer, coords).r;" << std::endl;
-		shaderBuilder << "	depthTestFail = (depth < depthValue);" << std::endl;
+		shaderBuilder << "	depthTestFail = (depth < dstDepth);" << std::endl;
 		break;
 	case DEPTH_TEST_GREATER:
-		shaderBuilder << "	uint depthValue = imageLoad(g_depthbuffer, coords).r;" << std::endl;
-		shaderBuilder << "	depthTestFail = (depth <= depthValue);" << std::endl;
+		shaderBuilder << "	depthTestFail = (depth <= dstDepth);" << std::endl;
 		break;
 	}
 
@@ -474,10 +520,20 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 		}
 		shaderBuilder << depthWriteCondition << std::endl;
 		shaderBuilder << "	{" << std::endl;
-		shaderBuilder << "		imageStore(g_depthbuffer, coords, uvec4(depth & g_depthMask));" << std::endl;
+		switch(depthBits)
+		{
+		case 32:
+			shaderBuilder << "		Memory_Write32(depthAddress);" << std::endl;
+			break;
+		case 16:
+			shaderBuilder << "		Memory_Write16(depthAddress, depth & 0xFFFF);" << std::endl;
+			break;
+		default:
+			assert(false);
+			break;
+		}
 		shaderBuilder << "	}" << std::endl;
 	}
-#endif
 
 	const char* colorWriteCondition = "	if(!depthTestFail)";
 	if(caps.hasAlphaTest && (caps.alphaFailResult == ALPHA_TEST_FAIL_ZBONLY))

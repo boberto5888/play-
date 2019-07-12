@@ -45,6 +45,15 @@ protected:
 private:
 	typedef CGsTextureCache<Framework::OpenGl::CTexture> TextureCache;
 
+	enum SHADER_IMAGE_LOCATIONS
+	{
+		SHADER_IMAGE_MEMORY,
+		SHADER_IMAGE_TEXTURE_SWIZZLE = 1,
+		SHADER_IMAGE_XFER_SWIZZLE = 1,
+		SHADER_IMAGE_FRAME_SWIZZLE,
+		SHADER_IMAGE_DEPTH_SWIZZLE,
+	};
+
 	struct SHADERCAPS : public convertible<uint64>
 	{
 		unsigned int texFunction : 2; //0 - Modulate, 1 - Decal, 2 - Highlight, 3 - Hightlight2
@@ -67,9 +76,10 @@ private:
 		unsigned int blendFactorC : 2;
 		unsigned int blendFactorD : 2;
 		unsigned int padding1 : 1;
-		unsigned int framePsm : 6;
 		unsigned int texPsm : 6;
-		unsigned int padding2 : 20;
+		unsigned int framePsm : 6;
+		unsigned int depthPsm : 6;
+		unsigned int padding2 : 14;
 
 		bool isIndexedTextureSource() const
 		{
@@ -107,6 +117,7 @@ private:
 		GLuint depthbufferTextureHandle;
 		GLuint textureSwizzleTableHandle;
 		GLuint frameSwizzleTableHandle;
+		GLuint depthSwizzleTableHandle;
 		GLuint texture0Handle;
 		GLint texture0MinFilter;
 		GLint texture0MagFilter;
@@ -159,7 +170,9 @@ private:
 		uint32 frameBufPtr;
 		//
 		uint32 frameBufWidth;
-		uint32 padding[3];
+		uint32 depthBufPtr;
+		uint32 depthBufWidth;
+		uint32 padding;
 	};
 	static_assert(sizeof(FRAGMENTPARAMS) == 0x60, "Size of FRAGMENTPARAMS must be 96 bytes.");
 
