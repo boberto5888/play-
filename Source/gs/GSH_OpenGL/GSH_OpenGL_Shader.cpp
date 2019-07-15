@@ -583,6 +583,8 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 		shaderBuilder << "		fragColor.a = dstColor.a;" << std::endl;
 	}
 
+	shaderBuilder << "		fragColor = clamp(fragColor, 0, 1);" << std::endl;
+
 	if((caps.framePsm == PSMCT32) || (caps.framePsm == PSMCT24))
 	{
 		shaderBuilder << "		uint pixel = Vec4ToPSM32(fragColor);" << std::endl;
