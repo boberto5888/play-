@@ -746,8 +746,8 @@ std::string CGSH_OpenGL::GenerateMemoryAccessSection()
 	shaderBuilder << "{" << std::endl;
 	shaderBuilder << "	uint wordAddress = address / 4;" << std::endl;
 	shaderBuilder << "	uint shiftAmount = (address & 2) * 8;" << std::endl;
-	shaderBuilder << "	uint mask = 0xFFFFFFFF ^ (0xFFFF << shiftAmount);";
-	shaderBuilder << "	uint valueWord = value << shiftAmount;";
+	shaderBuilder << "	uint mask = 0xFFFFFFFF ^ (0xFFFF << shiftAmount);" << std::endl;
+	shaderBuilder << "	uint valueWord = value << shiftAmount;" << std::endl;
 	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
 	shaderBuilder << "	imageAtomicAnd(g_memory, coords, mask);" << std::endl;
 	shaderBuilder << "	imageAtomicOr(g_memory, coords, valueWord);" << std::endl;
@@ -757,8 +757,8 @@ std::string CGSH_OpenGL::GenerateMemoryAccessSection()
 	shaderBuilder << "{" << std::endl;
 	shaderBuilder << "	uint wordAddress = address / 4;" << std::endl;
 	shaderBuilder << "	uint shiftAmount = (address & 3) * 8;" << std::endl;
-	shaderBuilder << "	uint mask = 0xFFFFFFFF ^ (0xFF << shiftAmount);";
-	shaderBuilder << "	uint valueWord = value << shiftAmount;";
+	shaderBuilder << "	uint mask = 0xFFFFFFFF ^ (0xFF << shiftAmount);" << std::endl;
+	shaderBuilder << "	uint valueWord = value << shiftAmount;" << std::endl;
 	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
 	shaderBuilder << "	imageAtomicAnd(g_memory, coords, mask);" << std::endl;
 	shaderBuilder << "	imageAtomicOr(g_memory, coords, valueWord);" << std::endl;
@@ -768,8 +768,8 @@ std::string CGSH_OpenGL::GenerateMemoryAccessSection()
 	shaderBuilder << "{" << std::endl;
 	shaderBuilder << "	uint wordAddress = address / 4;";
 	shaderBuilder << "	uint shiftAmount = ((address & 3) * 2 + nibIndex) * 4;" << std::endl;
-	shaderBuilder << "	uint mask = 0xFFFFFFFF ^ (0xF << shiftAmount);";
-	shaderBuilder << "	uint valueWord = value << shiftAmount;";
+	shaderBuilder << "	uint mask = 0xFFFFFFFF ^ (0xF << shiftAmount);" << std::endl;
+	shaderBuilder << "	uint valueWord = value << shiftAmount;" << std::endl;
 	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
 	shaderBuilder << "	imageAtomicAnd(g_memory, coords, mask);" << std::endl;
 	shaderBuilder << "	imageAtomicOr(g_memory, coords, valueWord);" << std::endl;
