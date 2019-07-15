@@ -199,6 +199,7 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 
 	shaderBuilder << GenerateMemoryAccessSection() << std::endl;
 
+	shaderBuilder << "layout(binding = " << SHADER_IMAGE_CLUT << ", r32ui) readonly uniform uimage2D g_clut;" << std::endl;
 	shaderBuilder << "layout(binding = " << SHADER_IMAGE_TEXTURE_SWIZZLE << ", r32ui) readonly uniform uimage2D g_textureSwizzleTable;" << std::endl;
 	shaderBuilder << "layout(binding = " << SHADER_IMAGE_FRAME_SWIZZLE << ", r32ui) readonly uniform uimage2D g_frameSwizzleTable;" << std::endl;
 	shaderBuilder << "layout(binding = " << SHADER_IMAGE_DEPTH_SWIZZLE << ", r32ui) readonly uniform uimage2D g_depthSwizzleTable;" << std::endl;
@@ -220,6 +221,7 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 	shaderBuilder << "	uint g_colorMask;" << std::endl;
 	shaderBuilder << "	uint g_textureBufPtr;" << std::endl;
 	shaderBuilder << "	uint g_textureBufWidth;" << std::endl;
+	shaderBuilder << "	uint g_textureCsa;" << std::endl;
 	shaderBuilder << "	uint g_frameBufPtr;" << std::endl;
 	shaderBuilder << "	uint g_frameBufWidth;" << std::endl;
 	shaderBuilder << "	uint g_depthBufPtr;" << std::endl;
@@ -346,16 +348,33 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 		else if(caps.texPsm == PSMT8)
 		{
 			shaderBuilder << "	uint textureAddress = GetPixelAddress_PSMT8(g_textureBufPtr, g_textureBufWidth, g_textureSwizzleTable, imageCoord);" << std::endl;
-			shaderBuilder << "	uint pixel = Memory_Read8(textureAddress);" << std::endl;
-			shaderBuilder << "	textureColor.rgb = vec3(float(pixel) / 255.0);" << std::endl;
-			shaderBuilder << "	textureColor.a = 1.0;" << std::endl;
+			shaderBuilder << "	uint colorIndex = Memory_Read8(textureAddress);" << std::endl;
+			if(caps.texCpsm == PSMCT32)
+			{
+				shaderBuilder << "	uint colorLo = imageLoad(g_clut, ivec2(colorIndex + 0x000, 0)).r;" << std::endl;
+				shaderBuilder << "	uint colorHi = imageLoad(g_clut, ivec2(colorIndex + 0x100, 0)).r;" << std::endl;
+				shaderBuilder << "	textureColor = PSM32ToVec4(colorLo | (colorHi << 16));" << std::endl;
+			}
+			else
+			{
+				assert(false);
+			}
 		}
 		else if(caps.texPsm == PSMT4)
 		{
 			shaderBuilder << "	uint textureAddress = GetPixelAddress_PSMT4(g_textureBufPtr, g_textureBufWidth, g_textureSwizzleTable, imageCoord);" << std::endl;
 			shaderBuilder << "	uint pixel = Memory_Read4(textureAddress, 0);" << std::endl;
-			shaderBuilder << "	textureColor.rgb = vec3(float(pixel) / 15.0);" << std::endl;
-			shaderBuilder << "	textureColor.a = 1.0;" << std::endl;
+			if(caps.texCpsm == PSMCT32)
+			{
+				shaderBuilder << "	uint colorIndex = (g_textureCsa * 16) + pixel;" << std::endl;
+				shaderBuilder << "	uint colorLo = imageLoad(g_clut, ivec2(colorIndex + 0x000, 0)).r;" << std::endl;
+				shaderBuilder << "	uint colorHi = imageLoad(g_clut, ivec2(colorIndex + 0x100, 0)).r;" << std::endl;
+				shaderBuilder << "	textureColor = PSM32ToVec4(colorLo | (colorHi << 16));" << std::endl;
+			}
+			else
+			{
+				assert(false);
+			}
 		}
 		else
 		{
@@ -1325,6 +1344,58 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgramPSMT4HH()
 		shaderBuilder << "	Memory_Write4(address + 3, 1, pixel);" << std::endl;
 		shaderBuilder << "}" << std::endl;
 		
+		auto source = shaderBuilder.str();
+		computeShader.SetSource(source.c_str());
+		FRAMEWORK_MAYBE_UNUSED bool result = computeShader.Compile();
+		assert(result);
+	}
+
+	{
+		program->AttachShader(computeShader);
+
+		FRAMEWORK_MAYBE_UNUSED bool result = program->Link();
+		assert(result);
+	}
+
+	return program;
+}
+
+Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateClutLoaderProgram()
+{
+	auto program = std::make_shared<Framework::OpenGl::CProgram>();
+
+	Framework::OpenGl::CShader computeShader(GL_COMPUTE_SHADER);
+
+	{
+		std::stringstream shaderBuilder;
+
+		shaderBuilder << "#version 430" << std::endl;
+
+		shaderBuilder << "layout(local_size_x = 16, local_size_y = 16) in;" << std::endl;
+
+		shaderBuilder << GenerateMemoryAccessSection();
+
+		shaderBuilder << "layout(binding = " << SHADER_IMAGE_CLUT << ", r32ui) uniform uimage2D g_clut;" << std::endl;
+		shaderBuilder << "layout(binding = " << SHADER_IMAGE_CLUT_SWIZZLE << ", r32ui) readonly uniform uimage2D g_clutSwizzleTable;" << std::endl;
+
+		shaderBuilder << "layout(binding = 0, std140) uniform clutLoadParams" << std::endl;
+		shaderBuilder << "{" << std::endl;
+		shaderBuilder << "	uint g_clutBufPtr;" << std::endl;
+		shaderBuilder << "};" << std::endl;
+
+		shaderBuilder << "void main()" << std::endl;
+		shaderBuilder << "{" << std::endl;
+		shaderBuilder << "	uvec2 colorPos = gl_GlobalInvocationID.xy;" << std::endl;
+		shaderBuilder << "	uint colorAddress = GetPixelAddress_PSMCT32(g_clutBufPtr, 64, g_clutSwizzleTable, colorPos);" << std::endl;
+		shaderBuilder << "	uint color = Memory_Read32(colorAddress);" << std::endl;
+		shaderBuilder << "	uint clutIndex = colorPos.x + (colorPos.y * 16);" << std::endl;
+		shaderBuilder << "	clutIndex = (clutIndex & ~0x18) | ((clutIndex & 0x08) << 1) | ((clutIndex & 0x10) >> 1);" << std::endl;
+		shaderBuilder << "	uint colorLo = (color >>  0) & 0xFFFF;" << std::endl;
+		shaderBuilder << "	uint colorHi = (color >> 16) & 0xFFFF;" << std::endl;
+		shaderBuilder << "	imageStore(g_clut, ivec2(clutIndex + 0x000, 0), uvec4(colorLo));" << std::endl;
+		shaderBuilder << "	imageStore(g_clut, ivec2(clutIndex + 0x100, 0), uvec4(colorHi));" << std::endl;
+		shaderBuilder << "}" << std::endl;
+
 		auto source = shaderBuilder.str();
 		computeShader.SetSource(source.c_str());
 		FRAMEWORK_MAYBE_UNUSED bool result = computeShader.Compile();

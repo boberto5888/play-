@@ -105,6 +105,8 @@ void CGSH_OpenGL::ReleaseImpl()
 	m_xferProgramPSMT4HH.reset();
 	m_xferBuffer.Reset();
 	m_xferParamsBuffer.Reset();
+	m_clutLoaderProgramIDX8_CSM0_PSMCT32.reset();
+	m_clutLoadParamsBuffer.Reset();
 }
 
 void CGSH_OpenGL::ResetImpl()
@@ -406,6 +408,16 @@ void CGSH_OpenGL::InitializeRC()
 	glBindTexture(GL_TEXTURE_2D, m_memoryTexture);
 	glTexStorage2D(GL_TEXTURE_2D, 1, GL_R32UI, MEMORY_TEXTURE_SIZE, MEMORY_TEXTURE_SIZE);
 	CHECKGLERROR();
+
+	//CLUT
+	m_clutTexture = Framework::OpenGl::CTexture::Create();
+	glBindTexture(GL_TEXTURE_2D, m_clutTexture);
+	glTexStorage2D(GL_TEXTURE_2D, 1, GL_R32UI, CLUTENTRYCOUNT, 1);
+	CHECKGLERROR();
+
+	m_clutLoadParamsBuffer = GenerateUniformBlockBuffer(sizeof(CLUTLOADPARAMS));
+
+	m_clutLoaderProgramIDX8_CSM0_PSMCT32 = GenerateClutLoaderProgram();
 
 	m_swizzleTexturePSMCT32 = CreateSwizzleTable<CGsPixelFormats::STORAGEPSMCT32>();
 	m_swizzleTexturePSMCT16 = CreateSwizzleTable<CGsPixelFormats::STORAGEPSMCT16>();
@@ -1256,6 +1268,7 @@ void CGSH_OpenGL::FillShaderCapsFromTexture(SHADERCAPS& shaderCaps, const uint64
 	
 	shaderCaps.texFunction = tex0.nFunction;
 	shaderCaps.texPsm = tex0.nPsm;
+	shaderCaps.texCpsm = tex0.nCPSM;
 }
 
 void CGSH_OpenGL::FillShaderCapsFromFrame(SHADERCAPS& shaderCaps, const uint64& frameReg)
@@ -1455,6 +1468,7 @@ void CGSH_OpenGL::SetupTexture(uint64 primReg, uint64 tex0Reg, uint64 tex1Reg, u
 	m_fragmentParams.texA1 = static_cast<float>(texA.nTA1) / 255.f;
 	m_fragmentParams.textureBufPtr = tex0.GetBufPtr();
 	m_fragmentParams.textureBufWidth = tex0.GetBufWidth();
+	m_fragmentParams.textureCsa = tex0.nCSA & 0x0F;
 	m_validGlState &= ~GLSTATE_FRAGMENT_PARAMS;
 }
 
@@ -1860,6 +1874,9 @@ void CGSH_OpenGL::DoRenderPass()
 	if((m_validGlState & GLSTATE_TEXTURE) == 0)
 	{
 		glBindImageTexture(SHADER_IMAGE_MEMORY, m_memoryTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32UI);
+		CHECKGLERROR();
+
+		glBindImageTexture(SHADER_IMAGE_CLUT, m_clutTexture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32UI);
 		CHECKGLERROR();
 
 		glBindImageTexture(SHADER_IMAGE_TEXTURE_SWIZZLE, m_renderState.textureSwizzleTableHandle, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32UI);
@@ -2367,11 +2384,62 @@ void CGSH_OpenGL::ProcessLocalToLocalTransfer()
 	}
 }
 
-void CGSH_OpenGL::ProcessClutTransfer(uint32 csa, uint32)
+void CGSH_OpenGL::ProcessClutTransfer(uint32 clutPtr, uint32)
 {
 	FlushVertexBuffer();
 	m_renderState.isTextureStateValid = false;
+
+	CLUTLOADPARAMS clutLoadParams;
+	clutLoadParams.clutBufPtr = clutPtr;
+
+	glBindBuffer(GL_UNIFORM_BUFFER, m_clutLoadParamsBuffer);
+	glBufferData(GL_UNIFORM_BUFFER, sizeof(CLUTLOADPARAMS), &clutLoadParams, GL_STREAM_DRAW);
+	CHECKGLERROR();
+
+	auto program = m_clutLoaderProgramIDX8_CSM0_PSMCT32;
+
+	//Setup compute dispatch
+	glUseProgram(*program);
+	m_validGlState &= ~GLSTATE_PROGRAM;
+
+	glBindBufferBase(GL_UNIFORM_BUFFER, 0, m_clutLoadParamsBuffer);
+	CHECKGLERROR();
+
+	glBindImageTexture(SHADER_IMAGE_MEMORY, m_memoryTexture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32UI);
+	CHECKGLERROR();
+
+	glBindImageTexture(SHADER_IMAGE_CLUT, m_clutTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32UI);
+	CHECKGLERROR();
+
+	glBindImageTexture(SHADER_IMAGE_CLUT_SWIZZLE, m_swizzleTexturePSMCT32, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32UI);
+	CHECKGLERROR();
+
+	m_validGlState &= ~GLSTATE_TEXTURE;
+
+#ifdef _DEBUG
+	program->Validate();
+#endif
+
+	glDispatchCompute(1, 1, 1);
+	CHECKGLERROR();
+
+#if 0
+	glMemoryBarrier(GL_TEXTURE_UPDATE_BARRIER_BIT);
+
+	std::vector<uint32> data;
+	data.resize(CLUTENTRYCOUNT);
+
+	{
+		glBindTexture(GL_TEXTURE_2D, m_clutTexture);
+		glGetTexImage(GL_TEXTURE_2D, 0, GL_RED_INTEGER, GL_UNSIGNED_INT, data.data());
+		CHECKGLERROR();
+		glBindTexture(GL_TEXTURE_2D, 0);
+	}
+#endif
+
+#if 0
 	PalCache_Invalidate(csa);
+#endif
 }
 
 void CGSH_OpenGL::ReadFramebuffer(uint32 width, uint32 height, void* buffer)
