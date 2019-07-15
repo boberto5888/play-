@@ -1099,8 +1099,8 @@ std::string CGSH_OpenGL::GenerateXferProgramBase()
 
 	shaderBuilder << "uint XferStream_Read4(uint pixelIndex)" << std::endl;
 	shaderBuilder << "{" << std::endl;
-	shaderBuilder << "	uint srcOffset = pixelIndex / 16;" << std::endl;
-	shaderBuilder << "	uint srcShift = (pixelIndex % 16) * 4;" << std::endl;
+	shaderBuilder << "	uint srcOffset = pixelIndex / 8;" << std::endl;
+	shaderBuilder << "	uint srcShift = (pixelIndex % 8) * 4;" << std::endl;
 	shaderBuilder << "	return (g_data[srcOffset] >> srcShift) & 0xF;" << std::endl;
 	shaderBuilder << "}" << std::endl;
 
