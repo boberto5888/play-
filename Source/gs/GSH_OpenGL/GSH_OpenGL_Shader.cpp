@@ -333,7 +333,7 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 	if(caps.texSourceMode != TEXTURE_SOURCE_MODE_NONE)
 	{
 		shaderBuilder << "	uvec2 imageCoord = uvec2(texCoord.st * g_textureSize.st);" << std::endl;
-		if(caps.texPsm == PSMCT32)
+		if(caps.texPsm == PSMCT32 || caps.texPsm == PSMCT24)
 		{
 			shaderBuilder << "	uint textureAddress = GetPixelAddress_PSMCT32(g_textureBufPtr, g_textureBufWidth, g_textureSwizzleTable, imageCoord);" << std::endl;
 			shaderBuilder << "	uint pixel = Memory_Read32(textureAddress);" << std::endl;

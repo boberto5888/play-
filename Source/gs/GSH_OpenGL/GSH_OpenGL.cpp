@@ -1455,7 +1455,6 @@ void CGSH_OpenGL::SetupTexture(uint64 primReg, uint64 tex0Reg, uint64 tex1Reg, u
 	m_vertexParams.texMatrix[3 + (3 * 4)] = 1;
 	m_validGlState &= ~GLSTATE_VERTEX_PARAMS;
 
-	//assert(tex0.nPsm == PSMCT32);
 	m_fragmentParams.textureSize[0] = static_cast<float>(tex0.GetWidth());
 	m_fragmentParams.textureSize[1] = static_cast<float>(tex0.GetHeight());
 	m_fragmentParams.texelSize[0] = 1.0f / static_cast<float>(tex0.GetWidth());

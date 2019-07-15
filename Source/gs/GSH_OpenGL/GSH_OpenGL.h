@@ -188,7 +188,7 @@ private:
 		uint32 dsay;
 		uint32 padding[3];
 	};
-	static_assert(sizeof(XFERPARAMS) == 0x20, "Size of FRAGMENTPARAMS must be 32 bytes.");
+	static_assert(sizeof(XFERPARAMS) == 0x20, "Size of XFERPARAMS must be 32 bytes.");
 
 	struct CLUTLOADPARAMS
 	{
