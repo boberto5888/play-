@@ -2165,6 +2165,10 @@ void CGSH_OpenGL::VertexKick(uint8 nRegister, uint64 nValue)
 
 void CGSH_OpenGL::ProcessHostToLocalTransfer()
 {
+	FlushVertexBuffer();
+	m_renderState.isTextureStateValid = false;
+	m_renderState.isFramebufferStateValid = false;
+
 	auto bltBuf = make_convertible<BITBLTBUF>(m_nReg[GS_REG_BITBLTBUF]);
 	auto trxReg = make_convertible<TRXREG>(m_nReg[GS_REG_TRXREG]);
 	auto trxPos = make_convertible<TRXPOS>(m_nReg[GS_REG_TRXPOS]);
@@ -2234,6 +2238,7 @@ void CGSH_OpenGL::ProcessHostToLocalTransfer()
 
 		//Setup compute dispatch
 		glUseProgram(*xferProgram);
+		m_validGlState &= ~GLSTATE_PROGRAM;
 
 		glBindBufferBase(GL_UNIFORM_BUFFER, 0, m_xferParamsBuffer);
 		CHECKGLERROR();
@@ -2246,6 +2251,8 @@ void CGSH_OpenGL::ProcessHostToLocalTransfer()
 
 		glBindImageTexture(SHADER_IMAGE_XFER_SWIZZLE, xferSwizzleTable, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32UI);
 		CHECKGLERROR();
+
+		m_validGlState &= ~GLSTATE_TEXTURE;
 
 #ifdef _DEBUG
 		xferProgram->Validate();
@@ -2269,10 +2276,6 @@ void CGSH_OpenGL::ProcessHostToLocalTransfer()
 
 		///////
 #if 0
-		FlushVertexBuffer();
-		m_renderState.isTextureStateValid = false;
-		m_renderState.isFramebufferStateValid = false;
-
 		auto trxReg = make_convertible<TRXREG>(m_nReg[GS_REG_TRXREG]);
 		auto trxPos = make_convertible<TRXPOS>(m_nReg[GS_REG_TRXPOS]);
 
