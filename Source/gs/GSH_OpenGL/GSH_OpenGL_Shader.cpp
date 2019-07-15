@@ -199,8 +199,8 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 
 	shaderBuilder << GenerateMemoryAccessSection() << std::endl;
 
-	shaderBuilder << "layout(binding = 1, r32ui) readonly uniform uimage2D g_textureSwizzleTable;" << std::endl;
-	shaderBuilder << "layout(binding = 2, r32ui) readonly uniform uimage2D g_frameSwizzleTable;" << std::endl;
+	shaderBuilder << "layout(binding = " << SHADER_IMAGE_TEXTURE_SWIZZLE << ", r32ui) readonly uniform uimage2D g_textureSwizzleTable;" << std::endl;
+	shaderBuilder << "layout(binding = " << SHADER_IMAGE_FRAME_SWIZZLE << ", r32ui) readonly uniform uimage2D g_frameSwizzleTable;" << std::endl;
 	shaderBuilder << "layout(binding = " << SHADER_IMAGE_DEPTH_SWIZZLE << ", r32ui) readonly uniform uimage2D g_depthSwizzleTable;" << std::endl;
 	//shaderBuilder << "uniform sampler2D g_texture;" << std::endl;
 	//shaderBuilder << "uniform sampler2D g_palette;" << std::endl;
@@ -732,7 +732,7 @@ std::string CGSH_OpenGL::GenerateMemoryAccessSection()
 {
 	std::stringstream shaderBuilder;
 
-	shaderBuilder << "layout(binding = 0, r32ui) uniform uimage2D g_memory;" << std::endl;
+	shaderBuilder << "layout(binding = " << SHADER_IMAGE_MEMORY << ", r32ui) uniform uimage2D g_memory;" << std::endl;
 	shaderBuilder << "const uint c_memorySize = 1024;" << std::endl;
 
 	shaderBuilder << "void Memory_Write32(uint address, uint value)" << std::endl;
@@ -932,7 +932,7 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GeneratePresentProgram()
 //		shaderBuilder << "uniform sampler2D g_texture;" << std::endl;
 		shaderBuilder << "uniform uint g_frameBufPtr;" << std::endl;
 		shaderBuilder << "uniform uint g_frameBufWidth;" << std::endl;
-		shaderBuilder << "layout(binding = 2, r32ui) readonly uniform uimage2D g_frameSwizzleTable;" << std::endl;
+		shaderBuilder << "layout(binding = " << SHADER_IMAGE_FRAME_SWIZZLE << ", r32ui) readonly uniform uimage2D g_frameSwizzleTable;" << std::endl;
 		shaderBuilder << "void main()" << std::endl;
 		shaderBuilder << "{" << std::endl;
 		shaderBuilder << "	ivec2 pixelPosition = ivec2(v_texCoord.x * 512.0, v_texCoord.y * 448.0);" << std::endl;
@@ -1035,7 +1035,7 @@ std::string CGSH_OpenGL::GenerateXferProgramBase()
 
 	shaderBuilder << "layout(local_size_x = " << g_xferWorkGroupSize << ") in;" << std::endl;
 
-	shaderBuilder << "layout(binding = 1, r32ui) readonly uniform uimage2D g_xferSwizzleTable;" << std::endl;
+	shaderBuilder << "layout(binding = " << SHADER_IMAGE_XFER_SWIZZLE << ", r32ui) readonly uniform uimage2D g_xferSwizzleTable;" << std::endl;
 
 	shaderBuilder << "layout(binding = 0, std140) uniform xferParams" << std::endl;
 	shaderBuilder << "{" << std::endl;

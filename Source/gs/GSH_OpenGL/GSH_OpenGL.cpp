@@ -258,8 +258,8 @@ void CGSH_OpenGL::FlipImpl()
 		//assert(m_presentTextureUniform != -1);
 		//glUniform1i(m_presentTextureUniform, 0);
 
-		glBindImageTexture(0, m_memoryTexture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32UI);
-		glBindImageTexture(2, GetSwizzleTable(fb.nPSM), 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32UI);
+		glBindImageTexture(SHADER_IMAGE_MEMORY, m_memoryTexture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32UI);
+		glBindImageTexture(SHADER_IMAGE_FRAME_SWIZZLE, GetSwizzleTable(fb.nPSM), 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32UI);
 
 		assert(m_presentTexCoordScaleUniform != -1);
 		glUniform2f(m_presentTexCoordScaleUniform, 1, 1);
@@ -1859,10 +1859,10 @@ void CGSH_OpenGL::DoRenderPass()
 
 	if((m_validGlState & GLSTATE_TEXTURE) == 0)
 	{
-		glBindImageTexture(0, m_memoryTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32UI);
+		glBindImageTexture(SHADER_IMAGE_MEMORY, m_memoryTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32UI);
 		CHECKGLERROR();
 
-		glBindImageTexture(1, m_renderState.textureSwizzleTableHandle, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32UI);
+		glBindImageTexture(SHADER_IMAGE_TEXTURE_SWIZZLE, m_renderState.textureSwizzleTableHandle, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32UI);
 		CHECKGLERROR();
 
 #if 0
@@ -2225,10 +2225,10 @@ void CGSH_OpenGL::ProcessHostToLocalTransfer()
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, m_xferBuffer);
 		CHECKGLERROR();
 
-		glBindImageTexture(0, m_memoryTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32UI);
+		glBindImageTexture(SHADER_IMAGE_MEMORY, m_memoryTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32UI);
 		CHECKGLERROR();
 
-		glBindImageTexture(1, xferSwizzleTable, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32UI);
+		glBindImageTexture(SHADER_IMAGE_XFER_SWIZZLE, xferSwizzleTable, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32UI);
 		CHECKGLERROR();
 
 #ifdef _DEBUG
