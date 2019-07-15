@@ -369,8 +369,6 @@ inline void CGsPixelFormats::CPixelIndexor<CGsPixelFormats::STORAGEPSMT4>::Build
 	{
 		for(uint32 x = 0; x < Storage::PAGEWIDTH; x++)
 		{
-			//TODO: Handle nibble offset
-
 			uint32 workX = x;
 			uint32 workY = y;
 
@@ -385,7 +383,7 @@ inline void CGsPixelFormats::CPixelIndexor<CGsPixelFormats::STORAGEPSMT4>::Build
 
 			uint32 shiftAmount = (workX & 0x18);
 			shiftAmount += (workY & 0x02) << 1;
-			uint32 byte = shiftAmount / 8;
+			uint32 nibble = shiftAmount / 4;
 
 			uint32 subTable = (workY & 0x02) >> 1;
 			subTable ^= (columnNum & 0x01);
@@ -393,8 +391,9 @@ inline void CGsPixelFormats::CPixelIndexor<CGsPixelFormats::STORAGEPSMT4>::Build
 			workX &= 0x07;
 			workY &= 0x01;
 
-			uint32 offset = (columnNum * COLUMNSIZE) + (blockNum * BLOCKSIZE) + (Storage::m_nColumnWordTable[subTable][workY][workX] * 4) + byte;
-			assert(offset < PAGESIZE);
+			assert(nibble < 8);
+			uint32 offset = ((columnNum * COLUMNSIZE) + (blockNum * BLOCKSIZE) + (Storage::m_nColumnWordTable[subTable][workY][workX] * 4)) * 2 + nibble;
+			assert(offset < (PAGESIZE * 2));
 			m_pageOffsets[y][x] = offset;
 		}
 	}

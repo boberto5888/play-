@@ -363,7 +363,7 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 		else if(caps.texPsm == PSMT4)
 		{
 			shaderBuilder << "	uint textureAddress = GetPixelAddress_PSMT4(g_textureBufPtr, g_textureBufWidth, g_textureSwizzleTable, imageCoord);" << std::endl;
-			shaderBuilder << "	uint pixel = Memory_Read4(textureAddress, 0);" << std::endl;
+			shaderBuilder << "	uint pixel = Memory_Read4(textureAddress);" << std::endl;
 			if(caps.texCpsm == PSMCT32)
 			{
 				shaderBuilder << "	uint colorIndex = (g_textureCsa * 16) + pixel;" << std::endl;
@@ -785,9 +785,11 @@ std::string CGSH_OpenGL::GenerateMemoryAccessSection()
 	shaderBuilder << "	imageAtomicOr(g_memory, coords, valueWord);" << std::endl;
 	shaderBuilder << "}" << std::endl;
 
-	shaderBuilder << "void Memory_Write4(uint address, uint nibIndex, uint value)" << std::endl;
+	shaderBuilder << "void Memory_Write4(uint nibAddress, uint value)" << std::endl;
 	shaderBuilder << "{" << std::endl;
-	shaderBuilder << "	uint wordAddress = address / 4;";
+	shaderBuilder << "	uint address = nibAddress / 2;" << std::endl;
+	shaderBuilder << "	uint wordAddress = address / 4;" << std::endl;
+	shaderBuilder << "	uint nibIndex = nibAddress & 1;" << std::endl;
 	shaderBuilder << "	uint shiftAmount = ((address & 3) * 2 + nibIndex) * 4;" << std::endl;
 	shaderBuilder << "	uint mask = 0xFFFFFFFF ^ (0xF << shiftAmount);" << std::endl;
 	shaderBuilder << "	uint valueWord = value << shiftAmount;" << std::endl;
@@ -821,9 +823,11 @@ std::string CGSH_OpenGL::GenerateMemoryAccessSection()
 	shaderBuilder << "	return (pixel >> shiftAmount) & 0xFF;" << std::endl;
 	shaderBuilder << "}" << std::endl;
 
-	shaderBuilder << "uint Memory_Read4(uint address, uint nibIndex)" << std::endl;
+	shaderBuilder << "uint Memory_Read4(uint nibAddress)" << std::endl;
 	shaderBuilder << "{" << std::endl;
+	shaderBuilder << "	uint address = nibAddress / 2;" << std::endl;
 	shaderBuilder << "	uint wordAddress = address / 4;" << std::endl;
+	shaderBuilder << "	uint nibIndex = nibAddress & 1;" << std::endl;
 	shaderBuilder << "	uint shiftAmount = ((address & 3) * 2 + nibIndex) * 4;" << std::endl;
 	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
 	shaderBuilder << "	uint pixel = imageLoad(g_memory, coords).r;" << std::endl;
@@ -913,7 +917,7 @@ std::string CGSH_OpenGL::GenerateMemoryAccessSection()
 	shaderBuilder << "	pixelPos.x %= c_pageWidth;" << std::endl;
 	shaderBuilder << "	pixelPos.y %= c_pageHeight;" << std::endl;
 	shaderBuilder << "	uint pageOffset = imageLoad(swizzleTable, ivec2(pixelPos)).r;" << std::endl;
-	shaderBuilder << "	return bufAddress + (pageNum * c_pageSize) + pageOffset;" << std::endl;
+	shaderBuilder << "	return (bufAddress + (pageNum * c_pageSize)) * 2 + pageOffset;" << std::endl;
 	shaderBuilder << "}" << std::endl;
 
 	auto shaderSource = shaderBuilder.str();
@@ -1230,7 +1234,7 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgramPSMT4()
 		shaderBuilder << "	uint pixel = XferStream_Read4(pixelIndex);" << std::endl;
 		shaderBuilder << "	uvec2 pixelPos = Xfer_GetPixelPosition(pixelIndex);" << std::endl;
 		shaderBuilder << "	uint address = GetPixelAddress_PSMT4(g_bufAddress, g_bufWidth, g_xferSwizzleTable, pixelPos);" << std::endl;
-		shaderBuilder << "	Memory_Write4(address, pixelIndex & 1, pixel);" << std::endl;
+		shaderBuilder << "	Memory_Write4(address, pixel);" << std::endl;
 		shaderBuilder << "}" << std::endl;
 		
 		auto source = shaderBuilder.str();
@@ -1304,7 +1308,7 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgramPSMT4HL()
 		shaderBuilder << "	uvec2 pixelPos = Xfer_GetPixelPosition(pixelIndex);" << std::endl;
 		shaderBuilder << "	const uint c_texelSize = 4;" << std::endl;
 		shaderBuilder << "	uint address = g_bufAddress + (pixelPos.y * g_bufWidth * c_texelSize) + (pixelPos.x * c_texelSize);" << std::endl;
-		shaderBuilder << "	Memory_Write4(address + 3, 0, pixel);" << std::endl;
+		shaderBuilder << "	Memory_Write4(((address + 3) * 2) | 0, pixel);" << std::endl;
 		shaderBuilder << "}" << std::endl;
 		
 		auto source = shaderBuilder.str();
@@ -1341,7 +1345,7 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgramPSMT4HH()
 		shaderBuilder << "	uvec2 pixelPos = Xfer_GetPixelPosition(pixelIndex);" << std::endl;
 		shaderBuilder << "	const uint c_texelSize = 4;" << std::endl;
 		shaderBuilder << "	uint address = g_bufAddress + (pixelPos.y * g_bufWidth * c_texelSize) + (pixelPos.x * c_texelSize);" << std::endl;
-		shaderBuilder << "	Memory_Write4(address + 3, 1, pixel);" << std::endl;
+		shaderBuilder << "	Memory_Write4(((address + 3) * 2) | 1, pixel);" << std::endl;
 		shaderBuilder << "}" << std::endl;
 		
 		auto source = shaderBuilder.str();
