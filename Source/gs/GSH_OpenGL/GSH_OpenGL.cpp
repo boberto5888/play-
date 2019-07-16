@@ -85,7 +85,8 @@ void CGSH_OpenGL::ReleaseImpl()
 
 	m_paletteCache.clear();
 	m_shaders.clear();
-	m_presentProgram.reset();
+	m_presentProgramPSMCT32.reset();
+	m_presentProgramPSMCT16.reset();
 	m_presentVertexBuffer.Reset();
 	m_presentVertexArray.Reset();
 	m_copyToFbProgram.reset();
@@ -255,7 +256,21 @@ void CGSH_OpenGL::FlipImpl()
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-		glUseProgram(*m_presentProgram);
+		Framework::OpenGl::ProgramPtr presentProgram;
+		switch(fb.nPSM)
+		{
+		default:
+			assert(false);
+		case PSMCT32:
+		case PSMCT24:
+			presentProgram = m_presentProgramPSMCT32;
+			break;
+		case PSMCT16:
+		case PSMCT16S:
+			presentProgram = m_presentProgramPSMCT16;
+			break;
+		}
+		glUseProgram(*presentProgram);
 
 		//assert(m_presentTextureUniform != -1);
 		//glUniform1i(m_presentTextureUniform, 0);
@@ -268,12 +283,13 @@ void CGSH_OpenGL::FlipImpl()
 
 		glUniform1ui(m_presentFrameBufPtr, fb.GetBufPtr());
 		glUniform1ui(m_presentFrameBufWidth, fb.GetBufWidth());
+		glUniform2ui(m_presentScreenSize, dispWidth, dispHeight);
 
 		glBindBuffer(GL_ARRAY_BUFFER, m_presentVertexBuffer);
 		glBindVertexArray(m_presentVertexArray);
 
 #ifdef _DEBUG
-		m_presentProgram->Validate();
+		presentProgram->Validate();
 #endif
 
 		glDrawArrays(GL_TRIANGLES, 0, 3);
@@ -376,13 +392,16 @@ void CGSH_OpenGL::InitializeRC()
 
 	SetupTextureUpdaters();
 
-	m_presentProgram = GeneratePresentProgram();
+	m_presentProgramPSMCT32 = GeneratePresentProgram(PSMCT32);
+	m_presentProgramPSMCT16 = GeneratePresentProgram(PSMCT16);
+
 	m_presentVertexBuffer = GeneratePresentVertexBuffer();
 	m_presentVertexArray = GeneratePresentVertexArray();
-	m_presentTextureUniform = glGetUniformLocation(*m_presentProgram, "g_texture");
-	m_presentTexCoordScaleUniform = glGetUniformLocation(*m_presentProgram, "g_texCoordScale");
-	m_presentFrameBufPtr = glGetUniformLocation(*m_presentProgram, "g_frameBufPtr");
-	m_presentFrameBufWidth = glGetUniformLocation(*m_presentProgram, "g_frameBufWidth");
+	//m_presentTextureUniform = glGetUniformLocation(*m_presentProgramPSMCT32, "g_texture");
+	m_presentTexCoordScaleUniform = glGetUniformLocation(*m_presentProgramPSMCT32, "g_texCoordScale");
+	m_presentFrameBufPtr = glGetUniformLocation(*m_presentProgramPSMCT32, "g_frameBufPtr");
+	m_presentFrameBufWidth = glGetUniformLocation(*m_presentProgramPSMCT32, "g_frameBufWidth");
+	m_presentScreenSize = glGetUniformLocation(*m_presentProgramPSMCT32, "g_screenSize");
 
 	m_copyToFbProgram = GenerateCopyToFbProgram();
 	m_copyToFbTexture = Framework::OpenGl::CTexture::Create();

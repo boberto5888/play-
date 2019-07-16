@@ -924,7 +924,7 @@ std::string CGSH_OpenGL::GenerateMemoryAccessSection()
 	return shaderSource;
 }
 
-Framework::OpenGl::ProgramPtr CGSH_OpenGL::GeneratePresentProgram()
+Framework::OpenGl::ProgramPtr CGSH_OpenGL::GeneratePresentProgram(uint32 framePsm)
 {
 	Framework::OpenGl::CShader vertexShader(GL_VERTEX_SHADER);
 	Framework::OpenGl::CShader pixelShader(GL_FRAGMENT_SHADER);
@@ -957,22 +957,27 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GeneratePresentProgram()
 //		shaderBuilder << "uniform sampler2D g_texture;" << std::endl;
 		shaderBuilder << "uniform uint g_frameBufPtr;" << std::endl;
 		shaderBuilder << "uniform uint g_frameBufWidth;" << std::endl;
+		shaderBuilder << "uniform uvec2 g_screenSize;" << std::endl;
 		shaderBuilder << "layout(binding = " << SHADER_IMAGE_FRAME_SWIZZLE << ", r32ui) readonly uniform uimage2D g_frameSwizzleTable;" << std::endl;
 		shaderBuilder << "void main()" << std::endl;
 		shaderBuilder << "{" << std::endl;
-		shaderBuilder << "	ivec2 pixelPosition = ivec2(v_texCoord.x * 512.0, v_texCoord.y * 448.0);" << std::endl;
-//		shaderBuilder << "	ivec2 pixelPosition = ivec2(v_texCoord.x * 640.0, v_texCoord.y * 256.0);" << std::endl;
-//		shaderBuilder << "	ivec2 pixelPosition = ivec2(v_texCoord.x * 640.0, v_texCoord.y * 448.0);" << std::endl;
-#if 0
-		shaderBuilder << "	uint frameAddress = GetPixelAddress_PSMCT32(g_frameBufPtr, g_frameBufWidth, g_frameSwizzleTable, pixelPosition);" << std::endl;
-		shaderBuilder << "	uint pixel = Memory_Read32(frameAddress);" << std::endl;
-		shaderBuilder << "	fragColor = PSM32ToVec4(pixel);" << std::endl;
-#endif
-#if 1
-		shaderBuilder << "	uint frameAddress = GetPixelAddress_PSMCT16(g_frameBufPtr, g_frameBufWidth, g_frameSwizzleTable, pixelPosition);" << std::endl;
-		shaderBuilder << "	uint pixel = Memory_Read16(frameAddress);" << std::endl;
-		shaderBuilder << "	fragColor = PSM16ToVec4(pixel);" << std::endl;
-#endif
+		shaderBuilder << "	ivec2 pixelPosition = ivec2(v_texCoord * g_screenSize);" << std::endl;
+		switch(framePsm)
+		{
+		default:
+			assert(false);
+		case PSMCT32:
+			shaderBuilder << "	uint frameAddress = GetPixelAddress_PSMCT32(g_frameBufPtr, g_frameBufWidth, g_frameSwizzleTable, pixelPosition);" << std::endl;
+			shaderBuilder << "	uint pixel = Memory_Read32(frameAddress);" << std::endl;
+			shaderBuilder << "	fragColor = PSM32ToVec4(pixel);" << std::endl;
+			break;
+		case PSMCT16:
+		case PSMCT16S:
+			shaderBuilder << "	uint frameAddress = GetPixelAddress_PSMCT16(g_frameBufPtr, g_frameBufWidth, g_frameSwizzleTable, pixelPosition);" << std::endl;
+			shaderBuilder << "	uint pixel = Memory_Read16(frameAddress);" << std::endl;
+			shaderBuilder << "	fragColor = PSM16ToVec4(pixel);" << std::endl;
+			break;
+		}
 		shaderBuilder << "}" << std::endl;
 
 		pixelShader.SetSource(shaderBuilder.str().c_str());

@@ -359,7 +359,7 @@ private:
 	std::string GenerateXferProgramBase();
 	std::string GenerateMemoryAccessSection();
 
-	Framework::OpenGl::ProgramPtr GeneratePresentProgram();
+	Framework::OpenGl::ProgramPtr GeneratePresentProgram(uint32);
 	Framework::OpenGl::CBuffer GeneratePresentVertexBuffer();
 	Framework::OpenGl::CVertexArray GeneratePresentVertexArray();
 
@@ -449,13 +449,15 @@ private:
 	void CommitFramebufferDirtyPages(const FramebufferPtr&, unsigned int, unsigned int);
 	void ResolveFramebufferMultisample(const FramebufferPtr&, uint32);
 
-	Framework::OpenGl::ProgramPtr m_presentProgram;
+	Framework::OpenGl::ProgramPtr m_presentProgramPSMCT32;
+	Framework::OpenGl::ProgramPtr m_presentProgramPSMCT16;
 	Framework::OpenGl::CBuffer m_presentVertexBuffer;
 	Framework::OpenGl::CVertexArray m_presentVertexArray;
 	GLint m_presentTextureUniform = -1;
 	GLint m_presentTexCoordScaleUniform = -1;
 	GLint m_presentFrameBufPtr = -1;
 	GLint m_presentFrameBufWidth = -1;
+	GLint m_presentScreenSize = -1;
 
 	Framework::OpenGl::ProgramPtr m_copyToFbProgram;
 	Framework::OpenGl::CTexture m_copyToFbTexture;
