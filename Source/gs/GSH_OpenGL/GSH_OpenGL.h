@@ -181,12 +181,13 @@ private:
 
 	struct XFERPARAMS
 	{
+		uint32 pixelCount;
 		uint32 bufAddress;
 		uint32 bufWidth;
 		uint32 rrw;
 		uint32 dsax;
 		uint32 dsay;
-		uint32 padding[3];
+		uint32 padding[2];
 	};
 	static_assert(sizeof(XFERPARAMS) == 0x20, "Size of XFERPARAMS must be 32 bytes.");
 

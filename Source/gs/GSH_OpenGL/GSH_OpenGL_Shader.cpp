@@ -1124,6 +1124,7 @@ std::string CGSH_OpenGL::GenerateXferProgramBase()
 
 	shaderBuilder << "layout(binding = 0, std140) uniform xferParams" << std::endl;
 	shaderBuilder << "{" << std::endl;
+	shaderBuilder << "	uint g_pixelCount;" << std::endl;
 	shaderBuilder << "	uint g_bufAddress;" << std::endl;
 	shaderBuilder << "	uint g_bufWidth;" << std::endl;
 	shaderBuilder << "	uint g_rrw;" << std::endl;
@@ -1183,6 +1184,7 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgramPSMCT32()
 		shaderBuilder << "void main()" << std::endl;
 		shaderBuilder << "{" << std::endl;
 		shaderBuilder << "	uint pixelIndex = gl_GlobalInvocationID.x;" << std::endl;
+		shaderBuilder << "	if(pixelIndex >= g_pixelCount) return;" << std::endl;
 		shaderBuilder << "	uint pixel = g_data[pixelIndex];" << std::endl;
 		shaderBuilder << "	uvec2 pixelPos = Xfer_GetPixelPosition(pixelIndex);" << std::endl;
 		shaderBuilder << "	uint address = GetPixelAddress_PSMCT32(g_bufAddress, g_bufWidth, g_xferSwizzleTable, pixelPos);" << std::endl;
@@ -1219,6 +1221,7 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgramPSMCT16()
 		shaderBuilder << "void main()" << std::endl;
 		shaderBuilder << "{" << std::endl;
 		shaderBuilder << "	uint pixelIndex = gl_GlobalInvocationID.x;" << std::endl;
+		shaderBuilder << "	if(pixelIndex >= g_pixelCount) return;" << std::endl;
 		shaderBuilder << "	uint pixel = XferStream_Read16(pixelIndex);" << std::endl;
 		shaderBuilder << "	uvec2 pixelPos = Xfer_GetPixelPosition(pixelIndex);" << std::endl;
 		shaderBuilder << "	uint address = GetPixelAddress_PSMCT16(g_bufAddress, g_bufWidth, g_xferSwizzleTable, pixelPos);" << std::endl;
@@ -1255,6 +1258,7 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgramPSMT8()
 		shaderBuilder << "void main()" << std::endl;
 		shaderBuilder << "{" << std::endl;
 		shaderBuilder << "	uint pixelIndex = gl_GlobalInvocationID.x;" << std::endl;
+		shaderBuilder << "	if(pixelIndex >= g_pixelCount) return;" << std::endl;
 		shaderBuilder << "	uint pixel = XferStream_Read8(pixelIndex);" << std::endl;
 		shaderBuilder << "	uvec2 pixelPos = Xfer_GetPixelPosition(pixelIndex);" << std::endl;
 		shaderBuilder << "	uint address = GetPixelAddress_PSMT8(g_bufAddress, g_bufWidth, g_xferSwizzleTable, pixelPos);" << std::endl;
@@ -1291,6 +1295,7 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgramPSMT4()
 		shaderBuilder << "void main()" << std::endl;
 		shaderBuilder << "{" << std::endl;
 		shaderBuilder << "	uint pixelIndex = gl_GlobalInvocationID.x;" << std::endl;
+		shaderBuilder << "	if(pixelIndex >= g_pixelCount) return;" << std::endl;
 		shaderBuilder << "	uint pixel = XferStream_Read4(pixelIndex);" << std::endl;
 		shaderBuilder << "	uvec2 pixelPos = Xfer_GetPixelPosition(pixelIndex);" << std::endl;
 		shaderBuilder << "	uint address = GetPixelAddress_PSMT4(g_bufAddress, g_bufWidth, g_xferSwizzleTable, pixelPos);" << std::endl;
@@ -1327,6 +1332,7 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgramPSMT8H()
 		shaderBuilder << "void main()" << std::endl;
 		shaderBuilder << "{" << std::endl;
 		shaderBuilder << "	uint pixelIndex = gl_GlobalInvocationID.x;" << std::endl;
+		shaderBuilder << "	if(pixelIndex >= g_pixelCount) return;" << std::endl;
 		shaderBuilder << "	uint pixel = XferStream_Read8(pixelIndex);" << std::endl;
 		shaderBuilder << "	uvec2 pixelPos = Xfer_GetPixelPosition(pixelIndex);" << std::endl;
 		shaderBuilder << "	uint address = GetPixelAddress_PSMCT32(g_bufAddress, g_bufWidth, g_xferSwizzleTable, pixelPos);" << std::endl;
@@ -1363,6 +1369,7 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgramPSMT4HL()
 		shaderBuilder << "void main()" << std::endl;
 		shaderBuilder << "{" << std::endl;
 		shaderBuilder << "	uint pixelIndex = gl_GlobalInvocationID.x;" << std::endl;
+		shaderBuilder << "	if(pixelIndex >= g_pixelCount) return;" << std::endl;
 		shaderBuilder << "	uint pixel = XferStream_Read4(pixelIndex);" << std::endl;
 		shaderBuilder << "	uvec2 pixelPos = Xfer_GetPixelPosition(pixelIndex);" << std::endl;
 		shaderBuilder << "	uint address = GetPixelAddress_PSMCT32(g_bufAddress, g_bufWidth, g_xferSwizzleTable, pixelPos);" << std::endl;
@@ -1399,6 +1406,7 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgramPSMT4HH()
 		shaderBuilder << "void main()" << std::endl;
 		shaderBuilder << "{" << std::endl;
 		shaderBuilder << "	uint pixelIndex = gl_GlobalInvocationID.x;" << std::endl;
+		shaderBuilder << "	if(pixelIndex >= g_pixelCount) return;" << std::endl;
 		shaderBuilder << "	uint pixel = XferStream_Read4(pixelIndex);" << std::endl;
 		shaderBuilder << "	uvec2 pixelPos = Xfer_GetPixelPosition(pixelIndex);" << std::endl;
 		shaderBuilder << "	uint address = GetPixelAddress_PSMCT32(g_bufAddress, g_bufWidth, g_xferSwizzleTable, pixelPos);" << std::endl;
