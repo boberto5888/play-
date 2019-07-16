@@ -1429,7 +1429,7 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgramPSMT4HH()
 	return program;
 }
 
-Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateClutLoaderProgram()
+Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateClutLoaderProgram(uint8 idx)
 {
 	auto program = std::make_shared<Framework::OpenGl::CProgram>();
 
@@ -1440,7 +1440,15 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateClutLoaderProgram()
 
 		shaderBuilder << "#version 430" << std::endl;
 
-		shaderBuilder << "layout(local_size_x = 16, local_size_y = 16) in;" << std::endl;
+		switch(idx)
+		{
+		case 4:
+			shaderBuilder << "layout(local_size_x = 8, local_size_y = 2) in;" << std::endl;
+			break;
+		case 8:
+			shaderBuilder << "layout(local_size_x = 16, local_size_y = 16) in;" << std::endl;
+			break;
+		}
 
 		shaderBuilder << GenerateMemoryAccessSection();
 
@@ -1450,6 +1458,7 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateClutLoaderProgram()
 		shaderBuilder << "layout(binding = 0, std140) uniform clutLoadParams" << std::endl;
 		shaderBuilder << "{" << std::endl;
 		shaderBuilder << "	uint g_clutBufPtr;" << std::endl;
+		shaderBuilder << "	uint g_csa;" << std::endl;
 		shaderBuilder << "};" << std::endl;
 
 		shaderBuilder << "void main()" << std::endl;
@@ -1457,8 +1466,17 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateClutLoaderProgram()
 		shaderBuilder << "	uvec2 colorPos = gl_GlobalInvocationID.xy;" << std::endl;
 		shaderBuilder << "	uint colorAddress = GetPixelAddress_PSMCT32(g_clutBufPtr, 64, g_clutSwizzleTable, colorPos);" << std::endl;
 		shaderBuilder << "	uint color = Memory_Read32(colorAddress);" << std::endl;
-		shaderBuilder << "	uint clutIndex = colorPos.x + (colorPos.y * 16);" << std::endl;
-		shaderBuilder << "	clutIndex = (clutIndex & ~0x18) | ((clutIndex & 0x08) << 1) | ((clutIndex & 0x10) >> 1);" << std::endl;
+		switch(idx)
+		{
+		case 4:
+			shaderBuilder << "	uint clutIndex = colorPos.x + (colorPos.y * 8);" << std::endl;
+			shaderBuilder << "	clutIndex = clutIndex + (g_csa * 16);" << std::endl;
+			break;
+		case 8:
+			shaderBuilder << "	uint clutIndex = colorPos.x + (colorPos.y * 16);" << std::endl;
+			shaderBuilder << "	clutIndex = (clutIndex & ~0x18) | ((clutIndex & 0x08) << 1) | ((clutIndex & 0x10) >> 1);" << std::endl;
+			break;
+		}
 		shaderBuilder << "	uint colorLo = (color >>  0) & 0xFFFF;" << std::endl;
 		shaderBuilder << "	uint colorHi = (color >> 16) & 0xFFFF;" << std::endl;
 		shaderBuilder << "	imageStore(g_clut, ivec2(clutIndex + 0x000, 0), uvec4(colorLo));" << std::endl;

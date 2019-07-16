@@ -107,6 +107,7 @@ void CGSH_OpenGL::ReleaseImpl()
 	m_xferBuffer.Reset();
 	m_xferParamsBuffer.Reset();
 	m_clutLoaderProgramIDX8_CSM0_PSMCT32.reset();
+	m_clutLoaderProgramIDX4_CSM0_PSMCT32.reset();
 	m_clutLoadParamsBuffer.Reset();
 }
 
@@ -436,7 +437,8 @@ void CGSH_OpenGL::InitializeRC()
 
 	m_clutLoadParamsBuffer = GenerateUniformBlockBuffer(sizeof(CLUTLOADPARAMS));
 
-	m_clutLoaderProgramIDX8_CSM0_PSMCT32 = GenerateClutLoaderProgram();
+	m_clutLoaderProgramIDX8_CSM0_PSMCT32 = GenerateClutLoaderProgram(8);
+	m_clutLoaderProgramIDX4_CSM0_PSMCT32 = GenerateClutLoaderProgram(4);
 
 	m_swizzleTexturePSMCT32 = CreateSwizzleTable<CGsPixelFormats::STORAGEPSMCT32>();
 	m_swizzleTexturePSMCT16 = CreateSwizzleTable<CGsPixelFormats::STORAGEPSMCT16>();
@@ -2409,22 +2411,41 @@ void CGSH_OpenGL::ProcessLocalToLocalTransfer()
 	}
 }
 
-void CGSH_OpenGL::ProcessClutTransfer(uint32 clutPtr, uint32)
+void CGSH_OpenGL::ProcessClutTransfer(uint32 tex0RegLo, uint32 tex0RegHi)
 {
 	FlushVertexBuffer();
 	m_renderState.isTextureStateValid = false;
 
+	auto tex0 = make_convertible<TEX0>(static_cast<uint64>(tex0RegLo) | static_cast<uint64>(tex0RegHi) << 32);
+
+	assert(CGsPixelFormats::IsPsmIDTEX(tex0.nPsm));
+	assert(tex0.nCPSM == PSMCT32);
+	assert(tex0.nCSM == 0);
+
+	Framework::OpenGl::ProgramPtr loaderProgram;
+
+	if(CGsPixelFormats::IsPsmIDTEX8(tex0.nPsm))
+	{
+		assert(tex0.nCSA == 0);
+		loaderProgram = m_clutLoaderProgramIDX8_CSM0_PSMCT32;
+	}
+	else
+	{
+		loaderProgram = m_clutLoaderProgramIDX4_CSM0_PSMCT32;
+	}
+
 	CLUTLOADPARAMS clutLoadParams;
-	clutLoadParams.clutBufPtr = clutPtr;
+	clutLoadParams.clutBufPtr = tex0.GetCLUTPtr();
+	clutLoadParams.csa = tex0.nCSA;
 
 	glBindBuffer(GL_UNIFORM_BUFFER, m_clutLoadParamsBuffer);
 	glBufferData(GL_UNIFORM_BUFFER, sizeof(CLUTLOADPARAMS), &clutLoadParams, GL_STREAM_DRAW);
 	CHECKGLERROR();
 
-	auto program = m_clutLoaderProgramIDX8_CSM0_PSMCT32;
+	assert(loaderProgram);
 
 	//Setup compute dispatch
-	glUseProgram(*program);
+	glUseProgram(*loaderProgram);
 	m_validGlState &= ~GLSTATE_PROGRAM;
 
 	glBindBufferBase(GL_UNIFORM_BUFFER, 0, m_clutLoadParamsBuffer);
@@ -2442,7 +2463,7 @@ void CGSH_OpenGL::ProcessClutTransfer(uint32 clutPtr, uint32)
 	m_validGlState &= ~GLSTATE_TEXTURE;
 
 #ifdef _DEBUG
-	program->Validate();
+	loaderProgram->Validate();
 #endif
 
 	glDispatchCompute(1, 1, 1);

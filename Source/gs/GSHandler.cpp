@@ -1104,6 +1104,7 @@ void CGSHandler::ReadCLUT4(const TEX0& tex0)
 
 	if(updateNeeded)
 	{
+#if 0
 		bool changed = false;
 
 		if(tex0.nCSM == 0)
@@ -1181,6 +1182,8 @@ void CGSHandler::ReadCLUT4(const TEX0& tex0)
 		{
 			ProcessClutTransfer(tex0.nCSA, 0);
 		}
+#endif
+		ProcessClutTransfer(static_cast<uint64>(tex0), static_cast<uint64>(tex0) >> 32);
 	}
 }
 
@@ -1296,7 +1299,7 @@ void CGSHandler::ReadCLUT8(const TEX0& tex0)
 			ProcessClutTransfer(tex0.nCSA, 0);
 		}
 #endif
-		ProcessClutTransfer(tex0.GetCLUTPtr(), 0);
+		ProcessClutTransfer(static_cast<uint64>(tex0), static_cast<uint64>(tex0) >> 32);
 	}
 }
 

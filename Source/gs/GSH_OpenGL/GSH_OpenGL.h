@@ -194,7 +194,8 @@ private:
 	struct CLUTLOADPARAMS
 	{
 		uint32 clutBufPtr;
-		uint32 padding[3];
+		uint32 csa;
+		uint32 padding[2];
 	};
 	static_assert(sizeof(CLUTLOADPARAMS) == 0x10, "Size of CLUTLOADPARAMS must be 16 bytes.");
 
@@ -376,7 +377,7 @@ private:
 	Framework::OpenGl::ProgramPtr GenerateXferProgramPSMT4HL();
 	Framework::OpenGl::ProgramPtr GenerateXferProgramPSMT4HH();
 
-	Framework::OpenGl::ProgramPtr GenerateClutLoaderProgram();
+	Framework::OpenGl::ProgramPtr GenerateClutLoaderProgram(uint8);
 
 	Framework::OpenGl::CVertexArray GeneratePrimVertexArray();
 	Framework::OpenGl::CBuffer GenerateUniformBlockBuffer(size_t);
@@ -489,6 +490,7 @@ private:
 	Framework::OpenGl::CTexture m_memoryTexture;
 
 	Framework::OpenGl::ProgramPtr m_clutLoaderProgramIDX8_CSM0_PSMCT32;
+	Framework::OpenGl::ProgramPtr m_clutLoaderProgramIDX4_CSM0_PSMCT32;
 	Framework::OpenGl::CBuffer m_clutLoadParamsBuffer;
 	Framework::OpenGl::CTexture m_clutTexture;
 
