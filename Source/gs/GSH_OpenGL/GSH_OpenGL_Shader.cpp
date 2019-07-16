@@ -370,6 +370,61 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 				shaderBuilder << "	uint colorLo = imageLoad(g_clut, ivec2(colorIndex + 0x000, 0)).r;" << std::endl;
 				shaderBuilder << "	uint colorHi = imageLoad(g_clut, ivec2(colorIndex + 0x100, 0)).r;" << std::endl;
 				shaderBuilder << "	textureColor = PSM32ToVec4(colorLo | (colorHi << 16));" << std::endl;
+				//shaderBuilder << "	textureColor.rgb = vec3(float(pixel) / 15.0);" << std::endl;
+				//shaderBuilder << "	textureColor.a = 1.0;" << std::endl;
+			}
+			else
+			{
+				assert(false);
+			}
+		}
+		else if(caps.texPsm == PSMT8H)
+		{
+			shaderBuilder << "	uint textureAddress = GetPixelAddress_PSMCT32(g_textureBufPtr, g_textureBufWidth, g_textureSwizzleTable, imageCoord);" << std::endl;
+			shaderBuilder << "	uint colorIndex = Memory_Read8(textureAddress + 3);" << std::endl;
+			if(caps.texCpsm == PSMCT32)
+			{
+				shaderBuilder << "	uint colorLo = imageLoad(g_clut, ivec2(colorIndex + 0x000, 0)).r;" << std::endl;
+				shaderBuilder << "	uint colorHi = imageLoad(g_clut, ivec2(colorIndex + 0x100, 0)).r;" << std::endl;
+				shaderBuilder << "	textureColor = PSM32ToVec4(colorLo | (colorHi << 16));" << std::endl;
+//				shaderBuilder << "	textureColor.rgb = vec3(float(colorIndex) / 255.0);" << std::endl;
+//				shaderBuilder << "	textureColor.a = 1.0;" << std::endl;
+			}
+			else
+			{
+				assert(false);
+			}
+		}
+		else if(caps.texPsm == PSMT4HL)
+		{
+			shaderBuilder << "	uint address = GetPixelAddress_PSMCT32(g_bufAddress, g_bufWidth, g_xferSwizzleTable, pixelPos);" << std::endl;
+			shaderBuilder << "	uint pixel = Memory_Read4(((address + 3) * 2) | 0);" << std::endl;
+			if(caps.texCpsm == PSMCT32)
+			{
+				shaderBuilder << "	uint colorIndex = (g_textureCsa * 16) + pixel;" << std::endl;
+				shaderBuilder << "	uint colorLo = imageLoad(g_clut, ivec2(colorIndex + 0x000, 0)).r;" << std::endl;
+				shaderBuilder << "	uint colorHi = imageLoad(g_clut, ivec2(colorIndex + 0x100, 0)).r;" << std::endl;
+				shaderBuilder << "	textureColor = PSM32ToVec4(colorLo | (colorHi << 16));" << std::endl;
+				//shaderBuilder << "	textureColor.rgb = vec3(float(pixel) / 15.0);" << std::endl;
+				//shaderBuilder << "	textureColor.a = 1.0;" << std::endl;
+			}
+			else
+			{
+				assert(false);
+			}
+		}
+		else if(caps.texPsm == PSMT4HH)
+		{
+			shaderBuilder << "	uint address = GetPixelAddress_PSMCT32(g_bufAddress, g_bufWidth, g_xferSwizzleTable, pixelPos);" << std::endl;
+			shaderBuilder << "	uint pixel = Memory_Read4(((address + 3) * 2) | 1);" << std::endl;
+			if(caps.texCpsm == PSMCT32)
+			{
+				shaderBuilder << "	uint colorIndex = (g_textureCsa * 16) + pixel;" << std::endl;
+				shaderBuilder << "	uint colorLo = imageLoad(g_clut, ivec2(colorIndex + 0x000, 0)).r;" << std::endl;
+				shaderBuilder << "	uint colorHi = imageLoad(g_clut, ivec2(colorIndex + 0x100, 0)).r;" << std::endl;
+				shaderBuilder << "	textureColor = PSM32ToVec4(colorLo | (colorHi << 16));" << std::endl;
+				//shaderBuilder << "	textureColor.rgb = vec3(float(pixel) / 15.0);" << std::endl;
+				//shaderBuilder << "	textureColor.a = 1.0;" << std::endl;
 			}
 			else
 			{
@@ -1274,8 +1329,7 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgramPSMT8H()
 		shaderBuilder << "	uint pixelIndex = gl_GlobalInvocationID.x;" << std::endl;
 		shaderBuilder << "	uint pixel = XferStream_Read8(pixelIndex);" << std::endl;
 		shaderBuilder << "	uvec2 pixelPos = Xfer_GetPixelPosition(pixelIndex);" << std::endl;
-		shaderBuilder << "	const uint c_texelSize = 4;" << std::endl;
-		shaderBuilder << "	uint address = g_bufAddress + (pixelPos.y * g_bufWidth * c_texelSize) + (pixelPos.x * c_texelSize);" << std::endl;
+		shaderBuilder << "	uint address = GetPixelAddress_PSMCT32(g_bufAddress, g_bufWidth, g_xferSwizzleTable, pixelPos);" << std::endl;
 		shaderBuilder << "	Memory_Write8(address + 3, pixel);" << std::endl;
 		shaderBuilder << "}" << std::endl;
 		
@@ -1311,8 +1365,7 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgramPSMT4HL()
 		shaderBuilder << "	uint pixelIndex = gl_GlobalInvocationID.x;" << std::endl;
 		shaderBuilder << "	uint pixel = XferStream_Read4(pixelIndex);" << std::endl;
 		shaderBuilder << "	uvec2 pixelPos = Xfer_GetPixelPosition(pixelIndex);" << std::endl;
-		shaderBuilder << "	const uint c_texelSize = 4;" << std::endl;
-		shaderBuilder << "	uint address = g_bufAddress + (pixelPos.y * g_bufWidth * c_texelSize) + (pixelPos.x * c_texelSize);" << std::endl;
+		shaderBuilder << "	uint address = GetPixelAddress_PSMCT32(g_bufAddress, g_bufWidth, g_xferSwizzleTable, pixelPos);" << std::endl;
 		shaderBuilder << "	Memory_Write4(((address + 3) * 2) | 0, pixel);" << std::endl;
 		shaderBuilder << "}" << std::endl;
 		
@@ -1348,8 +1401,7 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgramPSMT4HH()
 		shaderBuilder << "	uint pixelIndex = gl_GlobalInvocationID.x;" << std::endl;
 		shaderBuilder << "	uint pixel = XferStream_Read4(pixelIndex);" << std::endl;
 		shaderBuilder << "	uvec2 pixelPos = Xfer_GetPixelPosition(pixelIndex);" << std::endl;
-		shaderBuilder << "	const uint c_texelSize = 4;" << std::endl;
-		shaderBuilder << "	uint address = g_bufAddress + (pixelPos.y * g_bufWidth * c_texelSize) + (pixelPos.x * c_texelSize);" << std::endl;
+		shaderBuilder << "	uint address = GetPixelAddress_PSMCT32(g_bufAddress, g_bufWidth, g_xferSwizzleTable, pixelPos);" << std::endl;
 		shaderBuilder << "	Memory_Write4(((address + 3) * 2) | 1, pixel);" << std::endl;
 		shaderBuilder << "}" << std::endl;
 		

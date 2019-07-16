@@ -1518,6 +1518,9 @@ GLuint CGSH_OpenGL::GetSwizzleTable(uint32 psm) const
 	{
 	case PSMCT32:
 	case PSMCT24:
+	case PSMT8H:
+	case PSMT4HL:
+	case PSMT4HH:
 		return m_swizzleTexturePSMCT32;
 	case PSMCT16:
 		return m_swizzleTexturePSMCT16;
