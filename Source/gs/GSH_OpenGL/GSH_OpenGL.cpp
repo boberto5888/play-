@@ -662,7 +662,7 @@ unsigned int CGSH_OpenGL::GetCurrentReadCircuit()
 
 Framework::OpenGl::ProgramPtr CGSH_OpenGL::GetShaderFromCaps(const SHADERCAPS& shaderCaps)
 {
-	auto shaderIterator = m_shaders.find(static_cast<uint32>(shaderCaps));
+	auto shaderIterator = m_shaders.find(static_cast<SHADERCAPS::IntegerType>(shaderCaps));
 	if(shaderIterator == m_shaders.end())
 	{
 		auto shader = GenerateShader(shaderCaps);
@@ -708,8 +708,8 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GetShaderFromCaps(const SHADERCAPS& s
 
 		CHECKGLERROR();
 
-		m_shaders.insert(std::make_pair(static_cast<uint32>(shaderCaps), shader));
-		shaderIterator = m_shaders.find(static_cast<uint32>(shaderCaps));
+		m_shaders.insert(std::make_pair(static_cast<SHADERCAPS::IntegerType>(shaderCaps), shader));
+		shaderIterator = m_shaders.find(static_cast<SHADERCAPS::IntegerType>(shaderCaps));
 	}
 	return shaderIterator->second;
 }
@@ -757,7 +757,7 @@ void CGSH_OpenGL::SetRenderingContext(uint64 primReg)
 	//--------------------------------------------------------
 
 	if(!m_renderState.isValid ||
-	   (static_cast<uint32>(m_renderState.shaderCaps) != static_cast<uint32>(shaderCaps)))
+	   (static_cast<SHADERCAPS::IntegerType>(m_renderState.shaderCaps) != static_cast<SHADERCAPS::IntegerType>(shaderCaps)))
 	{
 		FlushVertexBuffer();
 		m_renderState.shaderCaps = shaderCaps;

@@ -89,7 +89,7 @@ private:
 			return texSourceMode == TEXTURE_SOURCE_MODE_IDX4 || texSourceMode == TEXTURE_SOURCE_MODE_IDX8;
 		}
 	};
-	static_assert(sizeof(SHADERCAPS) == sizeof(uint64), "SHADERCAPS structure size must be 8 bytes.");
+	static_assert(sizeof(SHADERCAPS) == sizeof(SHADERCAPS::IntegerType), "SHADERCAPS structure size must be 8 bytes.");
 
 	struct RENDERSTATE
 	{
@@ -237,7 +237,7 @@ private:
 		TEXTURE_CLAMP_MODE_REGION_REPEAT_SIMPLE = 3
 	};
 
-	typedef std::unordered_map<uint64, Framework::OpenGl::ProgramPtr> ShaderMap;
+	typedef std::unordered_map<SHADERCAPS::IntegerType, Framework::OpenGl::ProgramPtr> ShaderMap;
 
 	class CPalette
 	{
