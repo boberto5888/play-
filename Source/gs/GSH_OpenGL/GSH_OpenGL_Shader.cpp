@@ -559,6 +559,9 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 		case 32:
 			shaderBuilder << "	uint dstDepth = Memory_Read32(depthAddress);" << std::endl;
 			break;
+		case 24:
+			shaderBuilder << "	uint dstDepth = Memory_Read32(depthAddress) & 0xFFFFFF;" << std::endl;
+			break;
 		case 16:
 			shaderBuilder << "	uint dstDepth = Memory_Read16(depthAddress);" << std::endl;
 			break;
@@ -598,6 +601,9 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 		{
 		case 32:
 			shaderBuilder << "		Memory_Write32(depthAddress);" << std::endl;
+			break;
+		case 24:
+			shaderBuilder << "		Memory_Write24(depthAddress, depth & 0xFFFFFF);" << std::endl;
 			break;
 		case 16:
 			shaderBuilder << "		Memory_Write16(depthAddress, depth & 0xFFFF);" << std::endl;
@@ -816,6 +822,15 @@ std::string CGSH_OpenGL::GenerateMemoryAccessSection()
 	shaderBuilder << "	uint wordAddress = address / 4;" << std::endl;
 	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
 	shaderBuilder << "	imageStore(g_memory, coords, uvec4(value));" << std::endl;
+	shaderBuilder << "}" << std::endl;
+
+	shaderBuilder << "void Memory_Write24(uint address, uint value)" << std::endl;
+	shaderBuilder << "{" << std::endl;
+	shaderBuilder << "	uint wordAddress = address / 4;" << std::endl;
+	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
+	shaderBuilder << "	imageStore(g_memory, coords, uvec4(value));" << std::endl;
+	shaderBuilder << "	imageAtomicAnd(g_memory, coords, 0xFFFFFF);" << std::endl;
+	shaderBuilder << "	imageAtomicOr(g_memory, coords, value & 0xFFFFFF);" << std::endl;
 	shaderBuilder << "}" << std::endl;
 
 	shaderBuilder << "void Memory_Write16(uint address, uint value)" << std::endl;
