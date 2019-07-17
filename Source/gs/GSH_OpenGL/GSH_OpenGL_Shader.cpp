@@ -234,6 +234,33 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 		shaderBuilder << s_orFunction << std::endl;
 	}
 
+	if(caps.isIndexedTextureSource())
+	{
+		shaderBuilder << "vec4 ReadClut(uint colorIndex)" << std::endl;
+		shaderBuilder << "{" << std::endl;
+		if(caps.texSourceMode == TEXTURE_SOURCE_MODE_IDX4)
+		{
+			shaderBuilder << "	uint clutIndex = (g_textureCsa * 16) + colorIndex;" << std::endl;
+		}
+		else
+		{
+			shaderBuilder << "	uint clutIndex = colorIndex;" << std::endl;
+		}
+		switch(caps.texCpsm)
+		{
+		case PSMCT32:
+		case PSMCT24:
+			shaderBuilder << "	uint colorLo = imageLoad(g_clut, ivec2(colorIndex + 0x000, 0)).r;" << std::endl;
+			shaderBuilder << "	uint colorHi = imageLoad(g_clut, ivec2(colorIndex + 0x100, 0)).r;" << std::endl;
+			shaderBuilder << "	return PSM32ToVec4(colorLo | (colorHi << 16));" << std::endl;
+			break;
+		default:
+			assert(false);
+			break;
+		}
+		shaderBuilder << "}" << std::endl;
+	}
+
 	shaderBuilder << "float combineColors(float a, float b)" << std::endl;
 	shaderBuilder << "{" << std::endl;
 	shaderBuilder << "	uint aInt = uint(a * 255.0);" << std::endl;
@@ -349,87 +376,31 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 		{
 			shaderBuilder << "	uint textureAddress = GetPixelAddress_PSMT8(g_textureBufPtr, g_textureBufWidth, g_textureSwizzleTable, imageCoord);" << std::endl;
 			shaderBuilder << "	uint colorIndex = Memory_Read8(textureAddress);" << std::endl;
-			if(caps.texCpsm == PSMCT32)
-			{
-				shaderBuilder << "	uint colorLo = imageLoad(g_clut, ivec2(colorIndex + 0x000, 0)).r;" << std::endl;
-				shaderBuilder << "	uint colorHi = imageLoad(g_clut, ivec2(colorIndex + 0x100, 0)).r;" << std::endl;
-				shaderBuilder << "	textureColor = PSM32ToVec4(colorLo | (colorHi << 16));" << std::endl;
-			}
-			else
-			{
-				assert(false);
-			}
+			shaderBuilder << "	textureColor = ReadClut(colorIndex);" << std::endl;
 		}
 		else if(caps.texPsm == PSMT4)
 		{
 			shaderBuilder << "	uint textureAddress = GetPixelAddress_PSMT4(g_textureBufPtr, g_textureBufWidth, g_textureSwizzleTable, imageCoord);" << std::endl;
-			shaderBuilder << "	uint pixel = Memory_Read4(textureAddress);" << std::endl;
-			if(caps.texCpsm == PSMCT32)
-			{
-				shaderBuilder << "	uint colorIndex = (g_textureCsa * 16) + pixel;" << std::endl;
-				shaderBuilder << "	uint colorLo = imageLoad(g_clut, ivec2(colorIndex + 0x000, 0)).r;" << std::endl;
-				shaderBuilder << "	uint colorHi = imageLoad(g_clut, ivec2(colorIndex + 0x100, 0)).r;" << std::endl;
-				shaderBuilder << "	textureColor = PSM32ToVec4(colorLo | (colorHi << 16));" << std::endl;
-				//shaderBuilder << "	textureColor.rgb = vec3(float(pixel) / 15.0);" << std::endl;
-				//shaderBuilder << "	textureColor.a = 1.0;" << std::endl;
-			}
-			else
-			{
-				assert(false);
-			}
+			shaderBuilder << "	uint colorIndex = Memory_Read4(textureAddress);" << std::endl;
+			shaderBuilder << "	textureColor = ReadClut(colorIndex);" << std::endl;
 		}
 		else if(caps.texPsm == PSMT8H)
 		{
 			shaderBuilder << "	uint textureAddress = GetPixelAddress_PSMCT32(g_textureBufPtr, g_textureBufWidth, g_textureSwizzleTable, imageCoord);" << std::endl;
 			shaderBuilder << "	uint colorIndex = Memory_Read8(textureAddress + 3);" << std::endl;
-			if(caps.texCpsm == PSMCT32)
-			{
-				shaderBuilder << "	uint colorLo = imageLoad(g_clut, ivec2(colorIndex + 0x000, 0)).r;" << std::endl;
-				shaderBuilder << "	uint colorHi = imageLoad(g_clut, ivec2(colorIndex + 0x100, 0)).r;" << std::endl;
-				shaderBuilder << "	textureColor = PSM32ToVec4(colorLo | (colorHi << 16));" << std::endl;
-//				shaderBuilder << "	textureColor.rgb = vec3(float(colorIndex) / 255.0);" << std::endl;
-//				shaderBuilder << "	textureColor.a = 1.0;" << std::endl;
-			}
-			else
-			{
-				assert(false);
-			}
+			shaderBuilder << "	textureColor = ReadClut(colorIndex);" << std::endl;
 		}
 		else if(caps.texPsm == PSMT4HL)
 		{
-			shaderBuilder << "	uint address = GetPixelAddress_PSMCT32(g_bufAddress, g_bufWidth, g_xferSwizzleTable, pixelPos);" << std::endl;
-			shaderBuilder << "	uint pixel = Memory_Read4(((address + 3) * 2) | 0);" << std::endl;
-			if(caps.texCpsm == PSMCT32)
-			{
-				shaderBuilder << "	uint colorIndex = (g_textureCsa * 16) + pixel;" << std::endl;
-				shaderBuilder << "	uint colorLo = imageLoad(g_clut, ivec2(colorIndex + 0x000, 0)).r;" << std::endl;
-				shaderBuilder << "	uint colorHi = imageLoad(g_clut, ivec2(colorIndex + 0x100, 0)).r;" << std::endl;
-				shaderBuilder << "	textureColor = PSM32ToVec4(colorLo | (colorHi << 16));" << std::endl;
-				//shaderBuilder << "	textureColor.rgb = vec3(float(pixel) / 15.0);" << std::endl;
-				//shaderBuilder << "	textureColor.a = 1.0;" << std::endl;
-			}
-			else
-			{
-				assert(false);
-			}
+			shaderBuilder << "	uint textureAddress = GetPixelAddress_PSMCT32(g_textureBufPtr, g_textureBufWidth, g_textureSwizzleTable, imageCoord);" << std::endl;
+			shaderBuilder << "	uint colorIndex = Memory_Read4(((textureAddress + 3) * 2) | 0);" << std::endl;
+			shaderBuilder << "	textureColor = ReadClut(colorIndex);" << std::endl;
 		}
 		else if(caps.texPsm == PSMT4HH)
 		{
-			shaderBuilder << "	uint address = GetPixelAddress_PSMCT32(g_bufAddress, g_bufWidth, g_xferSwizzleTable, pixelPos);" << std::endl;
-			shaderBuilder << "	uint pixel = Memory_Read4(((address + 3) * 2) | 1);" << std::endl;
-			if(caps.texCpsm == PSMCT32)
-			{
-				shaderBuilder << "	uint colorIndex = (g_textureCsa * 16) + pixel;" << std::endl;
-				shaderBuilder << "	uint colorLo = imageLoad(g_clut, ivec2(colorIndex + 0x000, 0)).r;" << std::endl;
-				shaderBuilder << "	uint colorHi = imageLoad(g_clut, ivec2(colorIndex + 0x100, 0)).r;" << std::endl;
-				shaderBuilder << "	textureColor = PSM32ToVec4(colorLo | (colorHi << 16));" << std::endl;
-				//shaderBuilder << "	textureColor.rgb = vec3(float(pixel) / 15.0);" << std::endl;
-				//shaderBuilder << "	textureColor.a = 1.0;" << std::endl;
-			}
-			else
-			{
-				assert(false);
-			}
+			shaderBuilder << "	uint textureAddress = GetPixelAddress_PSMCT32(g_textureBufPtr, g_textureBufWidth, g_textureSwizzleTable, imageCoord);" << std::endl;
+			shaderBuilder << "	uint colorIndex = Memory_Read4(((textureAddress + 3) * 2) | 1);" << std::endl;
+			shaderBuilder << "	textureColor = ReadClut(colorIndex);" << std::endl;
 		}
 		else
 		{
@@ -1485,8 +1456,10 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgramPSMT4HH()
 	return program;
 }
 
-Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateClutLoaderProgram(uint8 idx)
+Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateClutLoaderProgram(const CLUTLOADER_SHADERCAPS& caps)
 {
+	assert(caps.csm == 0);
+
 	auto program = std::make_shared<Framework::OpenGl::CProgram>();
 
 	Framework::OpenGl::CShader computeShader(GL_COMPUTE_SHADER);
@@ -1496,14 +1469,13 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateClutLoaderProgram(uint8 idx)
 
 		shaderBuilder << "#version 430" << std::endl;
 
-		switch(idx)
+		if(caps.idx8)
 		{
-		case 4:
-			shaderBuilder << "layout(local_size_x = 8, local_size_y = 2) in;" << std::endl;
-			break;
-		case 8:
 			shaderBuilder << "layout(local_size_x = 16, local_size_y = 16) in;" << std::endl;
-			break;
+		}
+		else
+		{
+			shaderBuilder << "layout(local_size_x = 8, local_size_y = 2) in;" << std::endl;
 		}
 
 		shaderBuilder << GenerateMemoryAccessSection();
@@ -1520,23 +1492,50 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateClutLoaderProgram(uint8 idx)
 		shaderBuilder << "void main()" << std::endl;
 		shaderBuilder << "{" << std::endl;
 		shaderBuilder << "	uvec2 colorPos = gl_GlobalInvocationID.xy;" << std::endl;
-		shaderBuilder << "	uint colorAddress = GetPixelAddress_PSMCT32(g_clutBufPtr, 64, g_clutSwizzleTable, colorPos);" << std::endl;
-		shaderBuilder << "	uint color = Memory_Read32(colorAddress);" << std::endl;
-		switch(idx)
+		switch(caps.cpsm)
 		{
-		case 4:
-			shaderBuilder << "	uint clutIndex = colorPos.x + (colorPos.y * 8);" << std::endl;
-			shaderBuilder << "	clutIndex = clutIndex + (g_csa * 16);" << std::endl;
+		case PSMCT32:
+		case PSMCT24:
+			shaderBuilder << "	uint colorAddress = GetPixelAddress_PSMCT32(g_clutBufPtr, 64, g_clutSwizzleTable, colorPos);" << std::endl;
+			shaderBuilder << "	uint color = Memory_Read32(colorAddress);" << std::endl;
 			break;
-		case 8:
-			shaderBuilder << "	uint clutIndex = colorPos.x + (colorPos.y * 16);" << std::endl;
-			shaderBuilder << "	clutIndex = (clutIndex & ~0x18) | ((clutIndex & 0x08) << 1) | ((clutIndex & 0x10) >> 1);" << std::endl;
+		case PSMCT16:
+			shaderBuilder << "	uint colorAddress = GetPixelAddress_PSMCT16(g_clutBufPtr, 64, g_clutSwizzleTable, colorPos);" << std::endl;
+			shaderBuilder << "	uint color = Memory_Read16(colorAddress);" << std::endl;
+			break;
+		default:
+			assert(false);
 			break;
 		}
-		shaderBuilder << "	uint colorLo = (color >>  0) & 0xFFFF;" << std::endl;
-		shaderBuilder << "	uint colorHi = (color >> 16) & 0xFFFF;" << std::endl;
-		shaderBuilder << "	imageStore(g_clut, ivec2(clutIndex + 0x000, 0), uvec4(colorLo));" << std::endl;
-		shaderBuilder << "	imageStore(g_clut, ivec2(clutIndex + 0x100, 0), uvec4(colorHi));" << std::endl;
+
+		if(caps.idx8)
+		{
+			shaderBuilder << "	uint clutIndex = colorPos.x + (colorPos.y * 16);" << std::endl;
+			shaderBuilder << "	clutIndex = (clutIndex & ~0x18) | ((clutIndex & 0x08) << 1) | ((clutIndex & 0x10) >> 1);" << std::endl;
+		}
+		else
+		{
+			shaderBuilder << "	uint clutIndex = colorPos.x + (colorPos.y * 8);" << std::endl;
+			shaderBuilder << "	clutIndex = clutIndex + (g_csa * 16);" << std::endl;
+		}
+
+		switch(caps.cpsm)
+		{
+		case PSMCT32:
+		case PSMCT24:
+			shaderBuilder << "	uint colorLo = (color >>  0) & 0xFFFF;" << std::endl;
+			shaderBuilder << "	uint colorHi = (color >> 16) & 0xFFFF;" << std::endl;
+			shaderBuilder << "	imageStore(g_clut, ivec2(clutIndex + 0x000, 0), uvec4(colorLo));" << std::endl;
+			shaderBuilder << "	imageStore(g_clut, ivec2(clutIndex + 0x100, 0), uvec4(colorHi));" << std::endl;
+			break;
+		case PSMCT16:
+			shaderBuilder << "	imageStore(g_clut, ivec2(clutIndex, 0), uvec4(color));" << std::endl;
+			break;
+		default:
+			assert(false);
+			break;
+		}
+		
 		shaderBuilder << "}" << std::endl;
 
 		auto source = shaderBuilder.str();

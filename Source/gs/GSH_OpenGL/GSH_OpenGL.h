@@ -91,6 +91,14 @@ private:
 	};
 	static_assert(sizeof(SHADERCAPS) == sizeof(SHADERCAPS::IntegerType), "SHADERCAPS structure size must be 8 bytes.");
 
+	struct CLUTLOADER_SHADERCAPS : public convertible<uint32>
+	{
+		unsigned int idx8 : 1;
+		unsigned int cpsm : 4;
+		unsigned int csm : 1;
+	};
+	static_assert(sizeof(CLUTLOADER_SHADERCAPS) == sizeof(uint32), "CLUTLOADER_SHADERCAPS structure size must be 4 bytes.");
+
 	struct RENDERSTATE
 	{
 		bool isValid;
@@ -238,6 +246,7 @@ private:
 	};
 
 	typedef std::unordered_map<SHADERCAPS::IntegerType, Framework::OpenGl::ProgramPtr> ShaderMap;
+	typedef std::unordered_map<CLUTLOADER_SHADERCAPS::IntegerType, Framework::OpenGl::ProgramPtr> ClutLoaderShaderMap;
 
 	class CPalette
 	{
@@ -378,7 +387,7 @@ private:
 	Framework::OpenGl::ProgramPtr GenerateXferProgramPSMT4HL();
 	Framework::OpenGl::ProgramPtr GenerateXferProgramPSMT4HH();
 
-	Framework::OpenGl::ProgramPtr GenerateClutLoaderProgram(uint8);
+	Framework::OpenGl::ProgramPtr GenerateClutLoaderProgram(const CLUTLOADER_SHADERCAPS&);
 
 	Framework::OpenGl::CVertexArray GeneratePrimVertexArray();
 	Framework::OpenGl::CBuffer GenerateUniformBlockBuffer(size_t);
@@ -491,8 +500,6 @@ private:
 
 	Framework::OpenGl::CTexture m_memoryTexture;
 
-	Framework::OpenGl::ProgramPtr m_clutLoaderProgramIDX8_CSM0_PSMCT32;
-	Framework::OpenGl::ProgramPtr m_clutLoaderProgramIDX4_CSM0_PSMCT32;
 	Framework::OpenGl::CBuffer m_clutLoadParamsBuffer;
 	Framework::OpenGl::CTexture m_clutTexture;
 
@@ -530,6 +537,7 @@ private:
 	};
 
 	ShaderMap m_shaders;
+	ClutLoaderShaderMap m_clutLoaders;
 	RENDERSTATE m_renderState;
 	uint32 m_validGlState = 0;
 	VERTEXPARAMS m_vertexParams;

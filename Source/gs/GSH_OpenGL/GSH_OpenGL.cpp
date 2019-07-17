@@ -85,6 +85,7 @@ void CGSH_OpenGL::ReleaseImpl()
 
 	m_paletteCache.clear();
 	m_shaders.clear();
+	m_clutLoaders.clear();
 	m_presentProgramPSMCT32.reset();
 	m_presentProgramPSMCT16.reset();
 	m_presentVertexBuffer.Reset();
@@ -107,8 +108,6 @@ void CGSH_OpenGL::ReleaseImpl()
 	m_xferProgramPSMT4HH.reset();
 	m_xferBuffer.Reset();
 	m_xferParamsBuffer.Reset();
-	m_clutLoaderProgramIDX8_CSM0_PSMCT32.reset();
-	m_clutLoaderProgramIDX4_CSM0_PSMCT32.reset();
 	m_clutLoadParamsBuffer.Reset();
 }
 
@@ -438,9 +437,6 @@ void CGSH_OpenGL::InitializeRC()
 	CHECKGLERROR();
 
 	m_clutLoadParamsBuffer = GenerateUniformBlockBuffer(sizeof(CLUTLOADPARAMS));
-
-	m_clutLoaderProgramIDX8_CSM0_PSMCT32 = GenerateClutLoaderProgram(8);
-	m_clutLoaderProgramIDX4_CSM0_PSMCT32 = GenerateClutLoaderProgram(4);
 
 	m_swizzleTexturePSMCT32 = CreateSwizzleTable<CGsPixelFormats::STORAGEPSMCT32>();
 	m_swizzleTexturePSMCT16 = CreateSwizzleTable<CGsPixelFormats::STORAGEPSMCT16>();
@@ -2425,20 +2421,26 @@ void CGSH_OpenGL::ProcessClutTransfer(uint32 tex0RegLo, uint32 tex0RegHi)
 	auto tex0 = make_convertible<TEX0>(static_cast<uint64>(tex0RegLo) | static_cast<uint64>(tex0RegHi) << 32);
 
 	assert(CGsPixelFormats::IsPsmIDTEX(tex0.nPsm));
-	assert(tex0.nCPSM == PSMCT32);
-	assert(tex0.nCSM == 0);
+
+	auto caps = make_convertible<CLUTLOADER_SHADERCAPS>(0);
+	caps.idx8 = CGsPixelFormats::IsPsmIDTEX8(tex0.nPsm) ? 1 : 0;
+	caps.csm = tex0.nCSM;
+	caps.cpsm = tex0.nCPSM;
 
 	Framework::OpenGl::ProgramPtr loaderProgram;
-
-	if(CGsPixelFormats::IsPsmIDTEX8(tex0.nPsm))
+	auto loaderProgramIterator = m_clutLoaders.find(caps);
+	if(loaderProgramIterator == std::end(m_clutLoaders))
 	{
-		assert(tex0.nCSA == 0);
-		loaderProgram = m_clutLoaderProgramIDX8_CSM0_PSMCT32;
+		loaderProgram = GenerateClutLoaderProgram(caps);
+		m_clutLoaders.insert(std::make_pair(caps, loaderProgram));
 	}
 	else
 	{
-		loaderProgram = m_clutLoaderProgramIDX4_CSM0_PSMCT32;
+		loaderProgram = loaderProgramIterator->second;
 	}
+
+	assert(loaderProgram);
+	if(!loaderProgram) return;
 
 	CLUTLOADPARAMS clutLoadParams;
 	clutLoadParams.clutBufPtr = tex0.GetCLUTPtr();
@@ -2447,8 +2449,6 @@ void CGSH_OpenGL::ProcessClutTransfer(uint32 tex0RegLo, uint32 tex0RegHi)
 	glBindBuffer(GL_UNIFORM_BUFFER, m_clutLoadParamsBuffer);
 	glBufferData(GL_UNIFORM_BUFFER, sizeof(CLUTLOADPARAMS), &clutLoadParams, GL_STREAM_DRAW);
 	CHECKGLERROR();
-
-	assert(loaderProgram);
 
 	//Setup compute dispatch
 	glUseProgram(*loaderProgram);
@@ -2463,7 +2463,7 @@ void CGSH_OpenGL::ProcessClutTransfer(uint32 tex0RegLo, uint32 tex0RegHi)
 	glBindImageTexture(SHADER_IMAGE_CLUT, m_clutTexture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32UI);
 	CHECKGLERROR();
 
-	glBindImageTexture(SHADER_IMAGE_CLUT_SWIZZLE, m_swizzleTexturePSMCT32, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32UI);
+	glBindImageTexture(SHADER_IMAGE_CLUT_SWIZZLE, GetSwizzleTable(tex0.nCPSM), 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32UI);
 	CHECKGLERROR();
 
 	m_validGlState &= ~GLSTATE_TEXTURE;
