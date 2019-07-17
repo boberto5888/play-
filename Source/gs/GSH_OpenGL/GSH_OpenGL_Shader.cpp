@@ -1222,6 +1222,47 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgramPSMCT32()
 	return program;
 }
 
+Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgramPSMCT24()
+{
+	Framework::OpenGl::CShader computeShader(GL_COMPUTE_SHADER);
+
+	auto program = std::make_shared<Framework::OpenGl::CProgram>();
+
+	{
+		std::stringstream shaderBuilder;
+
+		shaderBuilder << GenerateXferProgramBase();
+
+		shaderBuilder << "void main()" << std::endl;
+		shaderBuilder << "{" << std::endl;
+		shaderBuilder << "	uint pixelIndex = gl_GlobalInvocationID.x;" << std::endl;
+		shaderBuilder << "	if(pixelIndex >= g_pixelCount) return;" << std::endl;
+		shaderBuilder << "	uint srcAddr = pixelIndex * 3;" << std::endl;
+		shaderBuilder << "	uint pixel = 0;" << std::endl;
+		shaderBuilder << "	pixel |= XferStream_Read8(srcAddr + 0) << 0;" << std::endl;
+		shaderBuilder << "	pixel |= XferStream_Read8(srcAddr + 1) << 8;" << std::endl;
+		shaderBuilder << "	pixel |= XferStream_Read8(srcAddr + 2) << 16;" << std::endl;
+		shaderBuilder << "	uvec2 pixelPos = Xfer_GetPixelPosition(pixelIndex);" << std::endl;
+		shaderBuilder << "	uint address = GetPixelAddress_PSMCT32(g_bufAddress, g_bufWidth, g_xferSwizzleTable, pixelPos);" << std::endl;
+		shaderBuilder << "	Memory_Write24(address, pixel);" << std::endl;
+		shaderBuilder << "}" << std::endl;
+		
+		auto source = shaderBuilder.str();
+		computeShader.SetSource(source.c_str());
+		FRAMEWORK_MAYBE_UNUSED bool result = computeShader.Compile();
+		assert(result);
+	}
+
+	{
+		program->AttachShader(computeShader);
+
+		FRAMEWORK_MAYBE_UNUSED bool result = program->Link();
+		assert(result);
+	}
+
+	return program;
+}
+
 Framework::OpenGl::ProgramPtr CGSH_OpenGL::GenerateXferProgramPSMCT16()
 {
 	Framework::OpenGl::CShader computeShader(GL_COMPUTE_SHADER);

@@ -370,6 +370,7 @@ private:
 	Framework::OpenGl::CVertexArray GenerateCopyToFbVertexArray();
 
 	Framework::OpenGl::ProgramPtr GenerateXferProgramPSMCT32();
+	Framework::OpenGl::ProgramPtr GenerateXferProgramPSMCT24();
 	Framework::OpenGl::ProgramPtr GenerateXferProgramPSMCT16();
 	Framework::OpenGl::ProgramPtr GenerateXferProgramPSMT8();
 	Framework::OpenGl::ProgramPtr GenerateXferProgramPSMT4();
@@ -477,6 +478,7 @@ private:
 	Framework::OpenGl::CVertexArray m_primVertexArray;
 
 	Framework::OpenGl::ProgramPtr m_xferProgramPSMCT32;
+	Framework::OpenGl::ProgramPtr m_xferProgramPSMCT24;
 	Framework::OpenGl::ProgramPtr m_xferProgramPSMCT16;
 	Framework::OpenGl::ProgramPtr m_xferProgramPSMT8;
 	Framework::OpenGl::ProgramPtr m_xferProgramPSMT4;

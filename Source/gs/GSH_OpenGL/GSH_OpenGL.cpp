@@ -98,6 +98,7 @@ void CGSH_OpenGL::ReleaseImpl()
 	m_vertexParamsBuffer.Reset();
 	m_fragmentParamsBuffer.Reset();
 	m_xferProgramPSMCT32.reset();
+	m_xferProgramPSMCT24.reset();
 	m_xferProgramPSMCT16.reset();
 	m_xferProgramPSMT8.reset();
 	m_xferProgramPSMT4.reset();
@@ -416,6 +417,7 @@ void CGSH_OpenGL::InitializeRC()
 
 	//Xfer
 	m_xferProgramPSMCT32 = GenerateXferProgramPSMCT32();
+	m_xferProgramPSMCT24 = GenerateXferProgramPSMCT24();
 	m_xferProgramPSMCT16 = GenerateXferProgramPSMCT16();
 	m_xferProgramPSMT8 = GenerateXferProgramPSMT8();
 	m_xferProgramPSMT4 = GenerateXferProgramPSMT4();
@@ -2210,6 +2212,10 @@ void CGSH_OpenGL::ProcessHostToLocalTransfer()
 		case PSMCT32:
 			pixelCount = m_trxCtx.offset / 4;
 			xferProgram = m_xferProgramPSMCT32;
+			break;
+		case PSMCT24:
+			pixelCount = m_trxCtx.offset / 3;
+			xferProgram = m_xferProgramPSMCT24;
 			break;
 		case PSMCT16:
 			pixelCount = m_trxCtx.offset / 2;
