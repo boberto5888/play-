@@ -1246,7 +1246,7 @@ void CGSH_OpenGL::FillShaderCapsFromTexture(SHADERCAPS& shaderCaps, const uint64
 		shaderCaps.texClampT = clampMode[1];
 	}
 
-	if(CGsPixelFormats::IsPsmIDTEX(tex0.nPsm))
+	//if(CGsPixelFormats::IsPsmIDTEX(tex0.nPsm))
 	{
 		if((tex1.nMinFilter != MIN_FILTER_NEAREST) || (tex1.nMagFilter != MIN_FILTER_NEAREST))
 		{

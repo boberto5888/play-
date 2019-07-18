@@ -250,9 +250,13 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 		{
 		case PSMCT32:
 		case PSMCT24:
+#if 1
 			shaderBuilder << "	uint colorLo = imageLoad(g_clut, ivec2(colorIndex + 0x000, 0)).r;" << std::endl;
 			shaderBuilder << "	uint colorHi = imageLoad(g_clut, ivec2(colorIndex + 0x100, 0)).r;" << std::endl;
 			shaderBuilder << "	return PSM32ToVec4(colorLo | (colorHi << 16));" << std::endl;
+#else
+			shaderBuilder << "	return vec4(vec3(clutIndex / 255.0), 1);" << std::endl;
+#endif
 			break;
 		default:
 			assert(false);
@@ -414,7 +418,21 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 #endif
 	if(caps.texSourceMode != TEXTURE_SOURCE_MODE_NONE)
 	{
-		shaderBuilder << "	textureColor = ReadTexture(texCoord.st);" << std::endl;
+		if(caps.texBilinearFilter)
+		{
+			shaderBuilder << "	vec4 tl = ReadTexture(texCoord.st                                     );" << std::endl;
+			shaderBuilder << "	vec4 tr = ReadTexture(texCoord.st + vec2(g_texelSize.x, 0)            );" << std::endl;
+			shaderBuilder << "	vec4 bl = ReadTexture(texCoord.st + vec2(0, g_texelSize.y)            );" << std::endl;
+			shaderBuilder << "	vec4 br = ReadTexture(texCoord.st + vec2(g_texelSize.x, g_texelSize.y));" << std::endl;
+			shaderBuilder << "	highp vec2 f = fract(texCoord.st * g_textureSize);" << std::endl;
+			shaderBuilder << "	vec4 tA = mix(tl, tr, f.x);" << std::endl;
+			shaderBuilder << "	vec4 tB = mix(bl, br, f.x);" << std::endl;
+			shaderBuilder << "	textureColor = mix(tA, tB, f.y);" << std::endl;
+		}
+		else
+		{
+			shaderBuilder << "	textureColor = ReadTexture(texCoord.st);" << std::endl;
+		}
 	}
 
 	if(caps.texSourceMode != TEXTURE_SOURCE_MODE_NONE)
