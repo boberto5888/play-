@@ -571,7 +571,7 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 		switch(depthBits)
 		{
 		case 32:
-			shaderBuilder << "		Memory_Write32(depthAddress);" << std::endl;
+			shaderBuilder << "		Memory_Write32(depthAddress, depth);" << std::endl;
 			break;
 		case 24:
 			shaderBuilder << "		Memory_Write24(depthAddress, depth & 0xFFFFFF);" << std::endl;
