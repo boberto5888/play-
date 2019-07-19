@@ -826,8 +826,7 @@ std::string CGSH_OpenGL::GenerateMemoryAccessSection()
 	shaderBuilder << "{" << std::endl;
 	shaderBuilder << "	uint wordAddress = address / 4;" << std::endl;
 	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
-	shaderBuilder << "	imageStore(g_memory, coords, uvec4(value));" << std::endl;
-	shaderBuilder << "	imageAtomicAnd(g_memory, coords, 0xFFFFFF);" << std::endl;
+	shaderBuilder << "	imageAtomicAnd(g_memory, coords, 0xFF000000);" << std::endl;
 	shaderBuilder << "	imageAtomicOr(g_memory, coords, value & 0xFFFFFF);" << std::endl;
 	shaderBuilder << "}" << std::endl;
 
