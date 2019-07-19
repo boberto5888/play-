@@ -178,7 +178,7 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 	{
 	case FRAGMENT_SHADER_ORDERING_ARB:
 		shaderBuilder << "#extension GL_ARB_fragment_shader_interlock : enable" << std::endl;
-		shaderBuilder << "layout(pixel_interlock_ordered) in;" << std::endl;
+		shaderBuilder << "layout(sample_interlock_ordered) in;" << std::endl;
 		break;
 	case FRAGMENT_SHADER_ORDERING_INTEL:
 		shaderBuilder << "#extension GL_INTEL_fragment_shader_ordering : enable" << std::endl;
@@ -187,9 +187,9 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 
 	shaderBuilder << "precision mediump float;" << std::endl;
 
-	shaderBuilder << "in highp float v_depth;" << std::endl;
-	shaderBuilder << "in vec4 v_color;" << std::endl;
-	shaderBuilder << "in highp vec3 v_texCoord;" << std::endl;
+	shaderBuilder << "sample in highp float v_depth;" << std::endl;
+	shaderBuilder << "sample in vec4 v_color;" << std::endl;
+	shaderBuilder << "sample in highp vec3 v_texCoord;" << std::endl;
 	if(caps.hasFog)
 	{
 		shaderBuilder << "in float v_fog;" << std::endl;
@@ -555,13 +555,13 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 		switch(depthBits)
 		{
 		case 32:
-			shaderBuilder << "	uint dstDepth = Memory_Read32(depthAddress);" << std::endl;
+			shaderBuilder << "	uint dstDepth = Memory_Read32MS(depthAddress, gl_SampleID);" << std::endl;
 			break;
 		case 24:
-			shaderBuilder << "	uint dstDepth = Memory_Read32(depthAddress) & 0xFFFFFF;" << std::endl;
+			shaderBuilder << "	uint dstDepth = Memory_Read32MS(depthAddress, gl_SampleID) & 0xFFFFFF;" << std::endl;
 			break;
 		case 16:
-			shaderBuilder << "	uint dstDepth = Memory_Read16(depthAddress);" << std::endl;
+			shaderBuilder << "	uint dstDepth = Memory_Read16MS(depthAddress, gl_SampleID);" << std::endl;
 			break;
 		default:
 			assert(false);
@@ -598,13 +598,13 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 		switch(depthBits)
 		{
 		case 32:
-			shaderBuilder << "		Memory_Write32(depthAddress, depth);" << std::endl;
+			shaderBuilder << "		Memory_Write32MS(depthAddress, depth, gl_SampleID);" << std::endl;
 			break;
 		case 24:
-			shaderBuilder << "		Memory_Write24(depthAddress, depth & 0xFFFFFF);" << std::endl;
+			shaderBuilder << "		Memory_Write24MS(depthAddress, depth & 0xFFFFFF, gl_SampleID);" << std::endl;
 			break;
 		case 16:
-			shaderBuilder << "		Memory_Write16(depthAddress, depth & 0xFFFF);" << std::endl;
+			shaderBuilder << "		Memory_Write16MS(depthAddress, depth & 0xFFFF, gl_SampleID);" << std::endl;
 			break;
 		default:
 			assert(false);
@@ -624,12 +624,12 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 
 	if((caps.framePsm == PSMCT32) || (caps.framePsm == PSMCT24))
 	{
-		shaderBuilder << "		uint dstPixel = Memory_Read32(frameAddress);" << std::endl;
+		shaderBuilder << "		uint dstPixel = Memory_Read32MS(frameAddress, gl_SampleID);" << std::endl;
 		shaderBuilder << "		vec4 dstColor = PSM32ToVec4(dstPixel);" << std::endl;
 	}
 	else if((caps.framePsm == PSMCT16) || (caps.framePsm == PSMCT16S))
 	{
-		shaderBuilder << "		uint dstPixel = Memory_Read16(frameAddress);" << std::endl;
+		shaderBuilder << "		uint dstPixel = Memory_Read16MS(frameAddress, gl_SampleID);" << std::endl;
 		shaderBuilder << "		vec4 dstColor = PSM16ToVec4(dstPixel);" << std::endl;
 	}
 	else
@@ -666,12 +666,12 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 	if((caps.framePsm == PSMCT32) || (caps.framePsm == PSMCT24))
 	{
 		shaderBuilder << "		uint pixel = Vec4ToPSM32(fragColor);" << std::endl;
-		shaderBuilder << "		Memory_Write32(frameAddress, pixel);" << std::endl;
+		shaderBuilder << "		Memory_Write32MS(frameAddress, pixel, gl_SampleID);" << std::endl;
 	}
 	else if((caps.framePsm == PSMCT16) || (caps.framePsm == PSMCT16S))
 	{
 		shaderBuilder << "		uint pixel = Vec4ToPSM16(fragColor);" << std::endl;
-		shaderBuilder << "		Memory_Write16(frameAddress, pixel);" << std::endl;
+		shaderBuilder << "		Memory_Write16MS(frameAddress, pixel, gl_SampleID);" << std::endl;
 	}
 
 	shaderBuilder << "	}" << std::endl;
@@ -812,22 +812,37 @@ std::string CGSH_OpenGL::GenerateMemoryAccessSection()
 {
 	std::stringstream shaderBuilder;
 
-	shaderBuilder << "layout(binding = " << SHADER_IMAGE_MEMORY << ", r32ui) uniform uimage2D g_memory;" << std::endl;
+	shaderBuilder << "layout(binding = " << SHADER_IMAGE_MEMORY << ", r32ui) uniform uimage2DMS g_memory;" << std::endl;
 	shaderBuilder << "const uint c_memorySize = 1024;" << std::endl;
 
 	shaderBuilder << "void Memory_Write32(uint address, uint value)" << std::endl;
 	shaderBuilder << "{" << std::endl;
 	shaderBuilder << "	uint wordAddress = address / 4;" << std::endl;
 	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
-	shaderBuilder << "	imageStore(g_memory, coords, uvec4(value));" << std::endl;
+	shaderBuilder << "	imageStore(g_memory, coords, 0, uvec4(value));" << std::endl;
+	shaderBuilder << "}" << std::endl;
+
+	shaderBuilder << "void Memory_Write32MS(uint address, uint value, int sampleId)" << std::endl;
+	shaderBuilder << "{" << std::endl;
+	shaderBuilder << "	uint wordAddress = address / 4;" << std::endl;
+	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
+	shaderBuilder << "	imageStore(g_memory, coords, sampleId, uvec4(value));" << std::endl;
 	shaderBuilder << "}" << std::endl;
 
 	shaderBuilder << "void Memory_Write24(uint address, uint value)" << std::endl;
 	shaderBuilder << "{" << std::endl;
 	shaderBuilder << "	uint wordAddress = address / 4;" << std::endl;
 	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
-	shaderBuilder << "	imageAtomicAnd(g_memory, coords, 0xFF000000);" << std::endl;
-	shaderBuilder << "	imageAtomicOr(g_memory, coords, value & 0xFFFFFF);" << std::endl;
+	shaderBuilder << "	imageAtomicAnd(g_memory, coords, 0, 0xFF000000);" << std::endl;
+	shaderBuilder << "	imageAtomicOr(g_memory, coords, 0, value & 0xFFFFFF);" << std::endl;
+	shaderBuilder << "}" << std::endl;
+
+	shaderBuilder << "void Memory_Write24MS(uint address, uint value, int sampleId)" << std::endl;
+	shaderBuilder << "{" << std::endl;
+	shaderBuilder << "	uint wordAddress = address / 4;" << std::endl;
+	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
+	shaderBuilder << "	imageAtomicAnd(g_memory, coords, sampleId, 0xFF000000);" << std::endl;
+	shaderBuilder << "	imageAtomicOr(g_memory, coords, sampleId, value & 0xFFFFFF);" << std::endl;
 	shaderBuilder << "}" << std::endl;
 
 	shaderBuilder << "void Memory_Write16(uint address, uint value)" << std::endl;
@@ -837,8 +852,19 @@ std::string CGSH_OpenGL::GenerateMemoryAccessSection()
 	shaderBuilder << "	uint mask = 0xFFFFFFFF ^ (0xFFFF << shiftAmount);" << std::endl;
 	shaderBuilder << "	uint valueWord = value << shiftAmount;" << std::endl;
 	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
-	shaderBuilder << "	imageAtomicAnd(g_memory, coords, mask);" << std::endl;
-	shaderBuilder << "	imageAtomicOr(g_memory, coords, valueWord);" << std::endl;
+	shaderBuilder << "	imageAtomicAnd(g_memory, coords, 0, mask);" << std::endl;
+	shaderBuilder << "	imageAtomicOr(g_memory, coords, 0, valueWord);" << std::endl;
+	shaderBuilder << "}" << std::endl;
+
+	shaderBuilder << "void Memory_Write16MS(uint address, uint value, int sampleId)" << std::endl;
+	shaderBuilder << "{" << std::endl;
+	shaderBuilder << "	uint wordAddress = address / 4;" << std::endl;
+	shaderBuilder << "	uint shiftAmount = (address & 2) * 8;" << std::endl;
+	shaderBuilder << "	uint mask = 0xFFFFFFFF ^ (0xFFFF << shiftAmount);" << std::endl;
+	shaderBuilder << "	uint valueWord = value << shiftAmount;" << std::endl;
+	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
+	shaderBuilder << "	imageAtomicAnd(g_memory, coords, sampleId, mask);" << std::endl;
+	shaderBuilder << "	imageAtomicOr(g_memory, coords, sampleId, valueWord);" << std::endl;
 	shaderBuilder << "}" << std::endl;
 
 	shaderBuilder << "void Memory_Write8(uint address, uint value)" << std::endl;
@@ -848,8 +874,8 @@ std::string CGSH_OpenGL::GenerateMemoryAccessSection()
 	shaderBuilder << "	uint mask = 0xFFFFFFFF ^ (0xFF << shiftAmount);" << std::endl;
 	shaderBuilder << "	uint valueWord = value << shiftAmount;" << std::endl;
 	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
-	shaderBuilder << "	imageAtomicAnd(g_memory, coords, mask);" << std::endl;
-	shaderBuilder << "	imageAtomicOr(g_memory, coords, valueWord);" << std::endl;
+	shaderBuilder << "	imageAtomicAnd(g_memory, coords, 0, mask);" << std::endl;
+	shaderBuilder << "	imageAtomicOr(g_memory, coords, 0, valueWord);" << std::endl;
 	shaderBuilder << "}" << std::endl;
 
 	shaderBuilder << "void Memory_Write4(uint nibAddress, uint value)" << std::endl;
@@ -861,15 +887,22 @@ std::string CGSH_OpenGL::GenerateMemoryAccessSection()
 	shaderBuilder << "	uint mask = 0xFFFFFFFF ^ (0xF << shiftAmount);" << std::endl;
 	shaderBuilder << "	uint valueWord = value << shiftAmount;" << std::endl;
 	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
-	shaderBuilder << "	imageAtomicAnd(g_memory, coords, mask);" << std::endl;
-	shaderBuilder << "	imageAtomicOr(g_memory, coords, valueWord);" << std::endl;
+	shaderBuilder << "	imageAtomicAnd(g_memory, coords, 0, mask);" << std::endl;
+	shaderBuilder << "	imageAtomicOr(g_memory, coords, 0, valueWord);" << std::endl;
 	shaderBuilder << "}" << std::endl;
 
 	shaderBuilder << "uint Memory_Read32(uint address)" << std::endl;
 	shaderBuilder << "{" << std::endl;
 	shaderBuilder << "	uint wordAddress = address / 4;" << std::endl;
 	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
-	shaderBuilder << "	return imageLoad(g_memory, coords).r;" << std::endl;
+	shaderBuilder << "	return imageLoad(g_memory, coords, 0).r;" << std::endl;
+	shaderBuilder << "}" << std::endl;
+
+	shaderBuilder << "uint Memory_Read32MS(uint address, int sampleId)" << std::endl;
+	shaderBuilder << "{" << std::endl;
+	shaderBuilder << "	uint wordAddress = address / 4;" << std::endl;
+	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
+	shaderBuilder << "	return imageLoad(g_memory, coords, sampleId).r;" << std::endl;
 	shaderBuilder << "}" << std::endl;
 
 	shaderBuilder << "uint Memory_Read16(uint address)" << std::endl;
@@ -877,7 +910,16 @@ std::string CGSH_OpenGL::GenerateMemoryAccessSection()
 	shaderBuilder << "	uint wordAddress = address / 4;" << std::endl;
 	shaderBuilder << "	uint shiftAmount = (address & 2) * 8;" << std::endl;
 	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
-	shaderBuilder << "	uint pixel = imageLoad(g_memory, coords).r;" << std::endl;
+	shaderBuilder << "	uint pixel = imageLoad(g_memory, coords, 0).r;" << std::endl;
+	shaderBuilder << "	return (pixel >> shiftAmount) & 0xFFFF;" << std::endl;
+	shaderBuilder << "}" << std::endl;
+
+	shaderBuilder << "uint Memory_Read16MS(uint address, int sampleId)" << std::endl;
+	shaderBuilder << "{" << std::endl;
+	shaderBuilder << "	uint wordAddress = address / 4;" << std::endl;
+	shaderBuilder << "	uint shiftAmount = (address & 2) * 8;" << std::endl;
+	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
+	shaderBuilder << "	uint pixel = imageLoad(g_memory, coords, sampleId).r;" << std::endl;
 	shaderBuilder << "	return (pixel >> shiftAmount) & 0xFFFF;" << std::endl;
 	shaderBuilder << "}" << std::endl;
 
@@ -886,7 +928,7 @@ std::string CGSH_OpenGL::GenerateMemoryAccessSection()
 	shaderBuilder << "	uint wordAddress = address / 4;" << std::endl;
 	shaderBuilder << "	uint shiftAmount = (address & 3) * 8;" << std::endl;
 	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
-	shaderBuilder << "	uint pixel = imageLoad(g_memory, coords).r;" << std::endl;
+	shaderBuilder << "	uint pixel = imageLoad(g_memory, coords, 0).r;" << std::endl;
 	shaderBuilder << "	return (pixel >> shiftAmount) & 0xFF;" << std::endl;
 	shaderBuilder << "}" << std::endl;
 
@@ -897,7 +939,7 @@ std::string CGSH_OpenGL::GenerateMemoryAccessSection()
 	shaderBuilder << "	uint nibIndex = nibAddress & 1;" << std::endl;
 	shaderBuilder << "	uint shiftAmount = ((address & 3) * 2 + nibIndex) * 4;" << std::endl;
 	shaderBuilder << "	ivec2 coords = ivec2(wordAddress % c_memorySize, wordAddress / c_memorySize);" << std::endl;
-	shaderBuilder << "	uint pixel = imageLoad(g_memory, coords).r;" << std::endl;
+	shaderBuilder << "	uint pixel = imageLoad(g_memory, coords, 0).r;" << std::endl;
 	shaderBuilder << "	return (pixel >> shiftAmount) & 0xF;" << std::endl;
 	shaderBuilder << "}" << std::endl;
 
@@ -1035,14 +1077,25 @@ Framework::OpenGl::ProgramPtr CGSH_OpenGL::GeneratePresentProgram(uint32 framePs
 			assert(false);
 		case PSMCT32:
 			shaderBuilder << "	uint frameAddress = GetPixelAddress_PSMCT32(g_frameBufPtr, g_frameBufWidth, g_frameSwizzleTable, pixelPosition);" << std::endl;
-			shaderBuilder << "	uint pixel = Memory_Read32(frameAddress);" << std::endl;
-			shaderBuilder << "	fragColor = PSM32ToVec4(pixel);" << std::endl;
+			//shaderBuilder << "	fragColor = PSM32ToVec4(pixel);" << std::endl;
+			shaderBuilder << "	vec4 color = vec4(0, 0, 0, 0);" << std::endl;
+			for(unsigned int i = 0; i < g_numSamples; i++)
+			{
+				shaderBuilder << "	color = color + PSM32ToVec4(Memory_Read32MS(frameAddress, " << i << "));" << std::endl;
+			}
+			shaderBuilder << "	fragColor = color / " << g_numSamples << ".0;" << std::endl;
 			break;
 		case PSMCT16:
 		case PSMCT16S:
 			shaderBuilder << "	uint frameAddress = GetPixelAddress_PSMCT16(g_frameBufPtr, g_frameBufWidth, g_frameSwizzleTable, pixelPosition);" << std::endl;
-			shaderBuilder << "	uint pixel = Memory_Read16(frameAddress);" << std::endl;
-			shaderBuilder << "	fragColor = PSM16ToVec4(pixel);" << std::endl;
+//			shaderBuilder << "	uint pixel = Memory_Read16(frameAddress);" << std::endl;
+//			shaderBuilder << "	fragColor = PSM16ToVec4(pixel);" << std::endl;
+			shaderBuilder << "	vec4 color = vec4(0, 0, 0, 0);" << std::endl;
+			for(unsigned int i = 0; i < g_numSamples; i++)
+			{
+				shaderBuilder << "	color = color + PSM16ToVec4(Memory_Read16MS(frameAddress, " << i << "));" << std::endl;
+			}
+			shaderBuilder << "	fragColor = color / " << g_numSamples << ".0;" << std::endl;
 			break;
 		}
 		shaderBuilder << "}" << std::endl;

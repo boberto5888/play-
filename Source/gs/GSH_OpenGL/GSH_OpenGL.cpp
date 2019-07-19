@@ -19,10 +19,10 @@
 #define BLEND_ONE_MINUS_SRC_ALPHA GL_ONE_MINUS_SRC1_ALPHA
 #endif
 
-#define NUM_SAMPLES 8
 #define FRAMEBUFFER_HEIGHT 1024
 
 const uint32 CGSH_OpenGL::g_xferWorkGroupSize = 1024;
+const uint32 CGSH_OpenGL::g_numSamples = 8;
 
 // clang-format off
 const GLenum CGSH_OpenGL::g_nativeClampModes[CGSHandler::CLAMP_MODE_MAX] =
@@ -369,6 +369,7 @@ void CGSH_OpenGL::LoadPreferences()
 	//m_fbScale = CAppConfig::GetInstance().GetPreferenceInteger(PREF_CGSH_OPENGL_RESOLUTION_FACTOR);
 	m_fbScale = 1;
 	m_forceBilinearTextures = CAppConfig::GetInstance().GetPreferenceBoolean(PREF_CGSH_OPENGL_FORCEBILINEARTEXTURES);
+	m_multisampleEnabled = true;
 }
 
 template <typename StorageFormat>
@@ -426,8 +427,9 @@ void CGSH_OpenGL::InitializeRC()
 	m_xferParamsBuffer = GenerateUniformBlockBuffer(sizeof(XFERPARAMS));
 
 	m_memoryTexture = Framework::OpenGl::CTexture::Create();
-	glBindTexture(GL_TEXTURE_2D, m_memoryTexture);
-	glTexStorage2D(GL_TEXTURE_2D, 1, GL_R32UI, MEMORY_TEXTURE_SIZE, MEMORY_TEXTURE_SIZE);
+	glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, m_memoryTexture);
+	//glTexStorage2D(GL_TEXTURE_2D, 1, GL_R32UI, MEMORY_TEXTURE_SIZE, MEMORY_TEXTURE_SIZE);
+	glTexStorage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, g_numSamples, GL_R32UI, MEMORY_TEXTURE_SIZE, MEMORY_TEXTURE_SIZE, GL_TRUE);
 	CHECKGLERROR();
 
 	//CLUT
@@ -448,6 +450,10 @@ void CGSH_OpenGL::InitializeRC()
 
 	m_vertexParamsBuffer = GenerateUniformBlockBuffer(sizeof(VERTEXPARAMS));
 	m_fragmentParamsBuffer = GenerateUniformBlockBuffer(sizeof(FRAGMENTPARAMS));
+
+	glEnable(GL_SAMPLE_SHADING);
+	glMinSampleShading(1.0);
+	CHECKGLERROR();
 
 	PresentBackbuffer();
 
@@ -2538,7 +2544,7 @@ CGSH_OpenGL::CFramebuffer::CFramebuffer(uint32 basePtr, uint32 width, uint32 hei
 		//We also need an attachment for multisampled color
 		glGenRenderbuffers(1, &m_colorBufferMs);
 		glBindRenderbuffer(GL_RENDERBUFFER, m_colorBufferMs);
-		glRenderbufferStorageMultisample(GL_RENDERBUFFER, NUM_SAMPLES, GL_RGBA8, m_width * scale, m_height * scale);
+		glRenderbufferStorageMultisample(GL_RENDERBUFFER, g_numSamples, GL_RGBA8, m_width * scale, m_height * scale);
 		CHECKGLERROR();
 	}
 
