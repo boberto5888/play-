@@ -1139,11 +1139,13 @@ void CGSH_OpenGL::SetupFramebuffer(uint64 frameReg, uint64 zbufReg, uint64 sciss
 	m_validGlState &= ~GLSTATE_FRAGMENT_PARAMS;
 
 	//Check if we're drawing into a buffer that's been used for depth before
+#if 0
 	{
 		auto zbufWrite = make_convertible<ZBUF>(frameReg);
 		auto depthbuffer = FindDepthbuffer(zbufWrite, frame);
 		m_drawingToDepth = (depthbuffer != nullptr);
 	}
+#endif
 
 	//Look for a framebuffer that matches the specified information
 	auto framebuffer = FindFramebuffer(frame);
