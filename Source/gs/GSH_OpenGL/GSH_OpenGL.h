@@ -509,6 +509,7 @@ private:
 	Framework::OpenGl::CTexture m_swizzleTexturePSMCT16S;
 	Framework::OpenGl::CTexture m_swizzleTexturePSMT8;
 	Framework::OpenGl::CTexture m_swizzleTexturePSMT4;
+	Framework::OpenGl::CTexture m_swizzleTexturePSMZ32;
 
 	VERTEX m_VtxBuffer[3];
 	int m_nVtxCount;

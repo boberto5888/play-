@@ -445,6 +445,7 @@ void CGSH_OpenGL::InitializeRC()
 	m_swizzleTexturePSMCT16S = CreateSwizzleTable<CGsPixelFormats::STORAGEPSMCT16S>();
 	m_swizzleTexturePSMT8 = CreateSwizzleTable<CGsPixelFormats::STORAGEPSMT8>();
 	m_swizzleTexturePSMT4 = CreateSwizzleTable<CGsPixelFormats::STORAGEPSMT4>();
+	m_swizzleTexturePSMZ32 = CreateSwizzleTable<CGsPixelFormats::STORAGEPSMZ32>();
 
 	m_xferBuffer = Framework::OpenGl::CBuffer::Create();
 
@@ -1176,8 +1177,7 @@ void CGSH_OpenGL::SetupFramebuffer(uint64 frameReg, uint64 zbufReg, uint64 sciss
 	m_renderState.framebufferTextureHandle = framebuffer->m_texture;
 	m_renderState.depthbufferTextureHandle = depthbuffer->m_depthBufferImage;
 	m_renderState.frameSwizzleTableHandle = GetSwizzleTable(frame.nPsm);
-	//TODO: Swizzle is actually different for depth buffers (PSM | 0x30 to convert)
-	m_renderState.depthSwizzleTableHandle = GetSwizzleTable(zbuf.nPsm);
+	m_renderState.depthSwizzleTableHandle = GetSwizzleTable(zbuf.nPsm | 0x30);
 	m_validGlState &= ~GLSTATE_FRAMEBUFFER; //glBindFramebuffer used to set just above
 
 	//We assume that we will be drawing to this framebuffer and that we'll need
@@ -1530,9 +1530,13 @@ GLuint CGSH_OpenGL::GetSwizzleTable(uint32 psm) const
 	case PSMT4HL:
 	case PSMT4HH:
 		return m_swizzleTexturePSMCT32;
+	case PSMZ32:
+	case PSMZ24:
+		return m_swizzleTexturePSMZ32;
 	case PSMCT16:
 		return m_swizzleTexturePSMCT16;
 	case PSMCT16S:
+	case PSMZ16S:
 		return m_swizzleTexturePSMCT16S;
 	case PSMT8:
 		return m_swizzleTexturePSMT8;
@@ -2218,6 +2222,7 @@ void CGSH_OpenGL::ProcessHostToLocalTransfer()
 			xferProgram = m_xferProgramPSMCT32;
 			break;
 		case PSMCT24:
+		case PSMZ24:
 			pixelCount = m_trxCtx.offset / 3;
 			xferProgram = m_xferProgramPSMCT24;
 			break;
