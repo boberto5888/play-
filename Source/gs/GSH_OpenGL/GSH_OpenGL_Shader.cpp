@@ -210,8 +210,8 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 	shaderBuilder << "{" << std::endl;
 	shaderBuilder << "	vec2 g_textureSize;" << std::endl;
 	shaderBuilder << "	vec2 g_texelSize;" << std::endl;
-	shaderBuilder << "	vec2 g_clampMin;" << std::endl;
-	shaderBuilder << "	vec2 g_clampMax;" << std::endl;
+	shaderBuilder << "	ivec2 g_clampMin;" << std::endl;
+	shaderBuilder << "	ivec2 g_clampMax;" << std::endl;
 	shaderBuilder << "	float g_texA0;" << std::endl;
 	shaderBuilder << "	float g_texA1;" << std::endl;
 	shaderBuilder << "	uint g_alphaRef;" << std::endl;
@@ -267,9 +267,15 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 
 	if(caps.texSourceMode != TEXTURE_SOURCE_MODE_NONE)
 	{
+		shaderBuilder << GenerateTexCoordClampingSection(static_cast<CLAMP_MODE>(caps.texClampS), "s");
+		shaderBuilder << GenerateTexCoordClampingSection(static_cast<CLAMP_MODE>(caps.texClampT), "t");
+
 		shaderBuilder << "vec4 ReadTexture(vec2 texCoord)" << std::endl;
 		shaderBuilder << "{" << std::endl;
-		shaderBuilder << "	uvec2 imageCoord = uvec2(texCoord.st * g_textureSize.st);" << std::endl;
+		shaderBuilder << "	ivec2 signedImageCoord = ivec2(texCoord.st * g_textureSize.st);" << std::endl;
+		shaderBuilder << "	signedImageCoord.s = Clamps(signedImageCoord.s, int(g_textureSize.s), g_clampMin.s, g_clampMax.s);" << std::endl;
+		shaderBuilder << "	signedImageCoord.t = Clampt(signedImageCoord.t, int(g_textureSize.t), g_clampMin.t, g_clampMax.t);" << std::endl;
+		shaderBuilder << "	uvec2 imageCoord = uvec2(signedImageCoord);" << std::endl;
 		shaderBuilder << "	vec4 textureColor = vec4(1.0);" << std::endl;
 		if(caps.texPsm == PSMCT32 || caps.texPsm == PSMCT24)
 		{
@@ -358,13 +364,13 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 	shaderBuilder << "	highp vec3 texCoord = v_texCoord;" << std::endl;
 	shaderBuilder << "	texCoord.st /= texCoord.p;" << std::endl;
 
-	if((caps.texClampS != TEXTURE_CLAMP_MODE_STD) || (caps.texClampT != TEXTURE_CLAMP_MODE_STD))
-	{
-		shaderBuilder << "	texCoord.st *= g_textureSize.st;" << std::endl;
-		shaderBuilder << GenerateTexCoordClampingSection(static_cast<TEXTURE_CLAMP_MODE>(caps.texClampS), "s");
-		shaderBuilder << GenerateTexCoordClampingSection(static_cast<TEXTURE_CLAMP_MODE>(caps.texClampT), "t");
-		shaderBuilder << "	texCoord.st /= g_textureSize.st;" << std::endl;
-	}
+	//if((caps.texClampS != TEXTURE_CLAMP_MODE_STD) || (caps.texClampT != TEXTURE_CLAMP_MODE_STD))
+	//{
+	//	shaderBuilder << "	texCoord.st *= g_textureSize.st;" << std::endl;
+	//	shaderBuilder << GenerateTexCoordClampingSection(static_cast<CLAMP_MODE>(caps.texClampS), "s");
+	//	shaderBuilder << GenerateTexCoordClampingSection(static_cast<CLAMP_MODE>(caps.texClampT), "t");
+	//	shaderBuilder << "	texCoord.st /= g_textureSize.st;" << std::endl;
+	//}
 
 	shaderBuilder << "	vec4 textureColor = vec4(1, 1, 1, 1);" << std::endl;
 #if 0
@@ -705,10 +711,11 @@ Framework::OpenGl::CShader CGSH_OpenGL::GenerateFragmentShader(const SHADERCAPS&
 	return result;
 }
 
-std::string CGSH_OpenGL::GenerateTexCoordClampingSection(TEXTURE_CLAMP_MODE clampMode, const char* coordinate)
+std::string CGSH_OpenGL::GenerateTexCoordClampingSection(CLAMP_MODE clampMode, const char* coordinate)
 {
 	std::stringstream shaderBuilder;
 
+#if 0
 	switch(clampMode)
 	{
 	case TEXTURE_CLAMP_MODE_REGION_CLAMP:
@@ -724,6 +731,29 @@ std::string CGSH_OpenGL::GenerateTexCoordClampingSection(TEXTURE_CLAMP_MODE clam
 		              << "g_clampMin." << coordinate << ") + g_clampMax." << coordinate << ";" << std::endl;
 		break;
 	}
+#endif
+
+	shaderBuilder << "int Clamp" << coordinate << "(int texCoord, int texSize, int clampMin, int clampMax)" << std::endl;
+	shaderBuilder << "{" << std::endl;
+	switch(clampMode)
+	{
+	case CLAMP_MODE_REPEAT:
+		shaderBuilder << "	return texCoord & (texSize - 1);" << std::endl;
+		break;
+	case CLAMP_MODE_CLAMP:
+		shaderBuilder << "	return clamp(texCoord, 0, texSize - 1);" << std::endl;
+		break;
+	case CLAMP_MODE_REGION_CLAMP:
+		shaderBuilder << "	return clamp(texCoord, clampMin, clampMax);" << std::endl;
+		break;
+	case CLAMP_MODE_REGION_REPEAT:
+		shaderBuilder << "	return (texCoord & clampMin) | clampMax;" << std::endl;
+		break;
+	default:
+		shaderBuilder << "	return texCoord;" << std::endl;
+		break;
+	}
+	shaderBuilder << "}" << std::endl;
 
 	std::string shaderSource = shaderBuilder.str();
 	return shaderSource;

@@ -164,8 +164,8 @@ private:
 		//
 		float textureSize[2];
 		float texelSize[2];
-		float clampMin[2];
-		float clampMax[2];
+		uint32 clampMin[2];
+		uint32 clampMax[2];
 		//
 		float texA0;
 		float texA1;
@@ -363,7 +363,7 @@ private:
 	Framework::OpenGl::ProgramPtr GenerateShader(const SHADERCAPS&);
 	Framework::OpenGl::CShader GenerateVertexShader(const SHADERCAPS&);
 	Framework::OpenGl::CShader GenerateFragmentShader(const SHADERCAPS&);
-	std::string GenerateTexCoordClampingSection(TEXTURE_CLAMP_MODE, const char*);
+	std::string GenerateTexCoordClampingSection(CLAMP_MODE, const char*);
 	std::string GenerateAlphaBlendABDValue(ALPHABLEND_ABD);
 	std::string GenerateAlphaBlendCValue(ALPHABLEND_C);
 	std::string GenerateAlphaTestSection(ALPHA_TEST_METHOD);
