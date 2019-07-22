@@ -1854,6 +1854,7 @@ void CGSH_OpenGL::FlushVertexBuffer()
 	DoRenderPass();
 
 	m_vertexBuffer.clear();
+	m_lastClutKeyValid = false;
 }
 
 void CGSH_OpenGL::DoRenderPass()
@@ -2216,6 +2217,7 @@ void CGSH_OpenGL::VertexKick(uint8 nRegister, uint64 nValue)
 void CGSH_OpenGL::ProcessHostToLocalTransfer()
 {
 	FlushVertexBuffer();
+	m_lastClutKeyValid = false;
 	m_renderState.isTextureStateValid = false;
 	m_renderState.isFramebufferStateValid = false;
 
@@ -2444,10 +2446,22 @@ void CGSH_OpenGL::ProcessLocalToLocalTransfer()
 
 void CGSH_OpenGL::ProcessClutTransfer(uint32 tex0RegLo, uint32 tex0RegHi)
 {
+	auto tex0 = make_convertible<TEX0>(static_cast<uint64>(tex0RegLo) | static_cast<uint64>(tex0RegHi) << 32);
+
+	//Check if we've already updated the CLUT
+	CLUTPARAMS clutKey = {};
+	clutKey.cbp = tex0.nCBP;
+	clutKey.cpsm = tex0.nCPSM;
+	clutKey.csa = tex0.nCSA;
+	clutKey.csm = tex0.nCSM;
+
+	if(m_lastClutKeyValid && (m_lastClutKey == clutKey))
+	{
+		return;
+	}
+
 	FlushVertexBuffer();
 	m_renderState.isTextureStateValid = false;
-
-	auto tex0 = make_convertible<TEX0>(static_cast<uint64>(tex0RegLo) | static_cast<uint64>(tex0RegHi) << 32);
 
 	assert(CGsPixelFormats::IsPsmIDTEX(tex0.nPsm));
 
@@ -2503,6 +2517,9 @@ void CGSH_OpenGL::ProcessClutTransfer(uint32 tex0RegLo, uint32 tex0RegHi)
 
 	glDispatchCompute(1, 1, 1);
 	CHECKGLERROR();
+
+	m_lastClutKey = clutKey;
+	m_lastClutKeyValid = true;
 
 #if 0
 	glMemoryBarrier(GL_TEXTURE_UPDATE_BARRIER_BIT);

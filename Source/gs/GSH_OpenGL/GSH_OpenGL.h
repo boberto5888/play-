@@ -229,6 +229,20 @@ private:
 		uint8 nFog;
 	};
 
+	struct CLUTPARAMS : public convertible<uint64>
+	{
+		unsigned int cbp : 14;
+		unsigned int cbw : 6;
+		unsigned int cpsm : 4;
+		unsigned int csm : 1;
+		unsigned int padding : 7;
+		unsigned int csa : 5;
+		unsigned int cou : 6;
+		unsigned int cov : 10;
+		unsigned int reserved : 11;
+	};
+	static_assert(sizeof(CLUTPARAMS) == sizeof(uint64), "Size of CLUTPARAMS must be 8 bytes.");
+
 	enum
 	{
 		TEXTURE_SOURCE_MODE_NONE = 0,
@@ -517,6 +531,9 @@ private:
 	PRMODE m_PrimitiveMode;
 	unsigned int m_primitiveType;
 	bool m_drawingToDepth = false;
+
+	CLUTPARAMS m_lastClutKey;
+	bool m_lastClutKeyValid = false;
 
 	static const GLenum g_nativeClampModes[CGSHandler::CLAMP_MODE_MAX];
 	static const unsigned int g_shaderClampModes[CGSHandler::CLAMP_MODE_MAX];
