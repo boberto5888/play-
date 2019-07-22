@@ -155,6 +155,7 @@ void CGSH_OpenGL::FlipImpl()
 	bool halfHeight = GetCrtIsInterlaced() && GetCrtIsFrameMode();
 	if(halfHeight) dispHeight /= 2;
 
+#if 0
 	FramebufferPtr framebuffer;
 	for(const auto& candidateFramebuffer : m_framebuffers)
 	{
@@ -184,6 +185,7 @@ void CGSH_OpenGL::FlipImpl()
 			ResolveFramebufferMultisample(framebuffer, m_fbScale);
 		}
 	}
+#endif
 
 	//Clear all of our output framebuffer
 	{
@@ -239,10 +241,10 @@ void CGSH_OpenGL::FlipImpl()
 	break;
 	}
 
-	if(framebuffer)
+	//if(framebuffer)
 	{
-		float u1 = static_cast<float>(dispWidth) / static_cast<float>(framebuffer->m_width);
-		float v1 = static_cast<float>(dispHeight) / static_cast<float>(framebuffer->m_height);
+		//float u1 = static_cast<float>(dispWidth) / static_cast<float>(framebuffer->m_width);
+		//float v1 = static_cast<float>(dispHeight) / static_cast<float>(framebuffer->m_height);
 
 		glDisable(GL_BLEND);
 		glDisable(GL_DEPTH_TEST);
@@ -251,11 +253,12 @@ void CGSH_OpenGL::FlipImpl()
 		glBindTexture(GL_TEXTURE_2D, 0);
 
 		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, framebuffer->m_texture);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glBindTexture(GL_TEXTURE_2D, 0);
+		//glBindTexture(GL_TEXTURE_2D, framebuffer->m_texture);
+		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
 		Framework::OpenGl::ProgramPtr presentProgram;
 		switch(fb.nPSM)
@@ -1152,13 +1155,14 @@ void CGSH_OpenGL::SetupFramebuffer(uint64 frameReg, uint64 zbufReg, uint64 sciss
 	auto framebuffer = FindFramebuffer(frame);
 	if(!framebuffer)
 	{
-		framebuffer = FramebufferPtr(new CFramebuffer(frame.GetBasePtr(), frame.GetWidth(), FRAMEBUFFER_HEIGHT, frame.nPsm, m_fbScale, m_multisampleEnabled));
+		framebuffer = FramebufferPtr(new CFramebuffer(0, frame.GetWidth(), FRAMEBUFFER_HEIGHT, PSMCT32, m_fbScale, m_multisampleEnabled));
 		m_framebuffers.push_back(framebuffer);
 		PopulateFramebuffer(framebuffer);
 	}
 
 	CommitFramebufferDirtyPages(framebuffer, scissor.scay0, scissor.scay1);
 
+#if 0
 	auto depthbuffer = FindDepthbuffer(zbuf, frame);
 	if(!depthbuffer)
 	{
@@ -1167,6 +1171,7 @@ void CGSH_OpenGL::SetupFramebuffer(uint64 frameReg, uint64 zbufReg, uint64 sciss
 	}
 
 	assert(framebuffer->m_width == depthbuffer->m_width);
+#endif
 
 	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer->m_framebuffer);
 
@@ -1174,8 +1179,8 @@ void CGSH_OpenGL::SetupFramebuffer(uint64 frameReg, uint64 zbufReg, uint64 sciss
 	assert(result == GL_FRAMEBUFFER_COMPLETE);
 
 	m_renderState.framebufferHandle = framebuffer->m_framebuffer;
-	m_renderState.framebufferTextureHandle = framebuffer->m_texture;
-	m_renderState.depthbufferTextureHandle = depthbuffer->m_depthBufferImage;
+//	m_renderState.framebufferTextureHandle = framebuffer->m_texture;
+//	m_renderState.depthbufferTextureHandle = depthbuffer->m_depthBufferImage;
 	m_renderState.frameSwizzleTableHandle = GetSwizzleTable(frame.nPsm);
 	m_renderState.depthSwizzleTableHandle = GetSwizzleTable(zbuf.nPsm | 0x30);
 	m_validGlState &= ~GLSTATE_FRAMEBUFFER; //glBindFramebuffer used to set just above
@@ -1506,13 +1511,18 @@ void CGSH_OpenGL::SetupTexture(uint64 primReg, uint64 tex0Reg, uint64 tex1Reg, u
 
 CGSH_OpenGL::FramebufferPtr CGSH_OpenGL::FindFramebuffer(const FRAME& frame) const
 {
+#if 0
 	auto framebufferIterator = std::find_if(std::begin(m_framebuffers), std::end(m_framebuffers),
 	                                        [&](const FramebufferPtr& framebuffer) {
 		                                        return (framebuffer->m_basePtr == frame.GetBasePtr()) &&
 		                                               (framebuffer->m_psm == frame.nPsm) &&
 		                                               (framebuffer->m_width == frame.GetWidth());
 	                                        });
-
+#endif
+	auto framebufferIterator = std::find_if(std::begin(m_framebuffers), std::end(m_framebuffers),
+	                                        [&](const FramebufferPtr& framebuffer) {
+		                                        return (framebuffer->m_width == frame.GetWidth());
+	                                        });
 	return (framebufferIterator != std::end(m_framebuffers)) ? *(framebufferIterator) : FramebufferPtr();
 }
 
