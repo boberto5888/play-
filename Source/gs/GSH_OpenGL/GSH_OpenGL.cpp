@@ -913,18 +913,6 @@ void CGSH_OpenGL::SetupFramebuffer(uint64 frameReg, uint64 zbufReg, uint64 sciss
 		a = false;
 	}
 
-	if((test.nAlphaEnabled == 1) && (test.nAlphaMethod == ALPHA_TEST_NEVER))
-	{
-		if(test.nAlphaFail == ALPHA_TEST_FAIL_RGBONLY)
-		{
-			a = false;
-		}
-		else if(test.nAlphaFail == ALPHA_TEST_FAIL_ZBONLY)
-		{
-			r = g = b = a = false;
-		}
-	}
-
 	m_renderState.colorMaskR = r;
 	m_renderState.colorMaskG = g;
 	m_renderState.colorMaskB = b;
