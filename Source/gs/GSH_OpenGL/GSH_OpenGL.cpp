@@ -1101,6 +1101,7 @@ void CGSH_OpenGL::FillShaderCapsFromTest(SHADERCAPS& shaderCaps, const uint64& t
 		{
 			shaderCaps.hasAlphaTest = 1;
 			shaderCaps.alphaTestMethod = test.nAlphaMethod;
+			shaderCaps.alphaFailMethod = test.nAlphaFail;
 		}
 	}
 	else
